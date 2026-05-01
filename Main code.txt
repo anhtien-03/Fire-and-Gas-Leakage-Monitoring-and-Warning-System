@@ -1,120 +1,201 @@
 #include <WiFi.h>
 #include <Firebase_ESP_Client.h>
-#include "DHT.h"
+#include <DHT.h>
 #include <math.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <SPI.h>
 #include <time.h>
 
-// ====== WIFI ======
-const char* ssid     = "TIEP";
-const char* password = "le0932501560";
+/*================================== 1. CẤU HÌNH WIFI & FIREBASE ======================*/
+const char* ssid     = "VIETTEL+PHO HA NOI";
+const char* password = "88888888";
 
-// ===== FIREBASE CONFIG =====
-#define API_KEY       "AIzaSyB8JK02oKE1n8Yep7QPFXaYExWGdGCqJHs"   
-#define DATABASE_URL  "https://esp32-98de6-default-rtdb.firebaseio.com/"
-#define USER_EMAIL    "truongtankietttk@gmail.com"  
-#define USER_PASSWORD "071203@tK"         
+#define API_KEY       "AIzaSyDekyiURuX0C2Tl_z30RIqfhGfMfD2jrTk"
+#define DATABASE_URL  "https://fire-alarm-system-4592c-default-rtdb.firebaseio.com/"
+#define USER_EMAIL    "truongtankietttk@gmail.com"
+#define USER_PASSWORD "071203@tK"
 
 FirebaseData firebaseData;
 FirebaseAuth auth;
 FirebaseConfig config;
-FirebaseJson json;
+static FirebaseJson json;
 
-// ====== DHT ======
-#define DHTPIN 7
-#define DHTTYPE DHT22
+/*================================== 2. CẢM BIẾN & ĐẦU RA ===============================*/
+#define DHTPIN     2
+#define DHTTYPE    DHT22
 DHT dht(DHTPIN, DHTTYPE);
 
-// ===== MQ PINS =====
-#define MQ2_PIN 6
-#define MQ5_PIN 5
-#define MQ9_PIN 4
+#define MQ2_PIN    1
+#define MQ5_PIN    7
+#define MQ7_PIN    6
 
-// ===== RELAY PINS =====
-#define RELAY1 35
-#define RELAY2 36
-#define RELAY3 37
-#define RELAY4 38
+#define RELAY1     21  
+#define RELAY2     47  
+#define RELAY3     48  
+#define RELAY4     45  
 
-// ===== BUTTON PINS =====
-#define BTN_RELAY1  42 // Quạt   → Điều khiển RELAY1  
-#define BTN_RELAY2  41 // Quạt   → Điều khiển RELAY2  
-#define BTN_RELAY3  40 // Còi    → Điều khiển RELAY3  
-#define BTN_RELAY4   1 // Máy bơm → Điều khiển RELAY4  
-#define BTN_MODE     2 // Chuyển chế độ Auto/Manual
+#define BTN_RESET  14
+#define BTN_RELAY1 12
+#define BTN_RELAY2 11
+#define BTN_RELAY3 10
+#define BTN_RELAY4 9
+#define BTN_MODE   13
 
-// ===== Biến trạng thái =====
-bool relay1State = false;
-bool relay2State = false;
-bool relay3State = false;
-bool relay4State = false;
-int mode = 0;// 0 = Auto, 1 = Manual
+#define LED_WIFI_OK   4
+#define LED_WIFI_LOST 5
 
 
-// ===== Thresholds mặc định =====
-int thresh_fire[5] = {0, 30, 40, 50, 60};   
-int thresh_khoi[5] = {0, 30, 40, 50, 60};
-int thresh_gas[5]  = {0, 30, 40, 50, 60};
+/*================================= 3. TRẠNG THÁI & NGƯỠNG ==============================*/
+bool relay1State = false, relay2State = false, relay3State = false, relay4State = false;
+int  mode = 0;  // 0: Auto, 1: Manual
 
-// ===== TFT ST7789 ===== 
-#define TFT_CS    10
-#define TFT_DC     9
-#define TFT_RST    8
-#define TFT_MOSI  11
-#define TFT_SCLK  12
-#define TFT_MISO  -1
+int thresh_fire[5] = {0, 20, 25, 30, 50};
+int thresh_gas[5]  = {0, 20, 25, 30, 50};
+
+// === TRỌNG SỐ CHO M_fire VÀ M_gas  ===
+float w_fire_temp  = 0.45f;
+float w_fire_hum   = 0.10f;
+float w_fire_smoke = 0.25f;
+float w_fire_co    = 0.12f;
+float w_fire_ch4   = 0.05f;
+float w_fire_lpg   = 0.03f;
+
+float w_gas_ch4 = 0.45f;
+float w_gas_lpg = 0.45f;
+float w_gas_co  = 0.10f;
+
+struct DetailThresholds {
+  // ===== Temperature =====
+  float temp_very_low   = 20.0f;
+  float temp_low        = 30.0f;
+  float temp_high       = 35.0f;
+  float temp_very_high  = 40.0f;
+
+  // ===== Humidity =====
+  float hum_very_low    = 30.0f;
+  float hum_low         = 50.0f;
+  float hum_high        = 75.0f;
+  float hum_very_high   = 85.0f;
+
+  // ===== MQ2 - Smoke (max 1000 ppm)
+  float smoke_very_low  = 20.0f;
+  float smoke_low       = 50.0f;
+  float smoke_high      = 200.0f;
+  float smoke_very_high = 300.0f;
+
+  // ===== MQ5 - CH4 (max 3000 ppm)
+  float ch4_very_low    = 100.0f;
+  float ch4_low         = 150.0f;
+  float ch4_high        = 400.0f;
+  float ch4_very_high   = 1000.0f;
+
+  // ===== MQ5 - LPG (max 2000 ppm)
+  float lpg_very_low    = 100.0f;
+  float lpg_low         = 150.0f;
+  float lpg_high        = 400.0f;
+  float lpg_very_high   = 1000.0f;
+
+  // ===== MQ7 - CO (max 400 ppm)
+  float co_very_low     = 20.0f;
+  float co_low          = 30.0f;
+  float co_high         = 100.0f;
+  float co_very_high    = 200.0f;
+} threshold;
+
+
+/*======================================================================================*/
+/*===================================== 4. TFT ST7789 ==================================*/
+#define TFT_CS   15
+#define TFT_DC   17
+#define TFT_RST  16
+#define TFT_MOSI 18
+#define TFT_SCLK 8
+#define TFT_MISO -1
+
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
-// ===== ELECTRICAL MODEL =====
+#define SCREEN_W 240
+#define SCREEN_H 320
+
+#define COLOR_BG        0x0841
+#define COLOR_CARD      0x18E3
+#define COLOR_TEMP      0xFD20
+#define COLOR_HUM       0x37E0
+#define BORDER_ACCENT   0x7BEF
+#define BORDER_SHADOW   0x4208
+#define ST77XX_CYAN     0x07FF  
+#define COLOR_FIRE      ST77XX_RED
+#define COLOR_GAS       ST77XX_ORANGE
+#define COLOR_SAFE      ST77XX_GREEN
+#define COLOR_WARN      ST77XX_YELLOW
+#define COLOR_DANGER    ST77XX_RED
+#define BORDER_MAIN     ST77XX_WHITE
+#define COLOR_DARK_GREEN   0x03E0
+#define COLOR_DARK_YELLOW  0xECA6
+#define COLOR_DARK_ORANGE  0xFA60
+#define COLOR_DARK_BLUE    0x0010
+#define COLOR_DARK_GRAY    0x4208
+#define COLOR_LIGHT_RED    0xFBAE   
+#define COLOR_LIGHT_BLUE   0xAEDF  
+#define COLOR_DARK_ORANGE  0xFBE0
+#define COLOR_DARK_YELLOW  0xECA6  
+#define COLOR_LIGHT_YELLOW 0xFFF0  
+
+/*================================= 5. MÔ HÌNH ĐIỆN & HIỆU CHUẨN ========================*/
 const float VCC_SENSOR = 5.0f;
 const float ADC_REF    = 3.3f;
 const float RT_TOP     = 10000.0f;
 const float RB_BOTTOM  = 20000.0f;
-const float RL_MODULE  = 9800.0f;
+const float RL_MODULE  = 10000.0f;
 const float AOUT_SCALE = (RT_TOP + RB_BOTTOM) / RB_BOTTOM;
 
-// ===== R0 (Ω) — đã đo trước =====
-float R0_MQ2 = 55000.0f;  
-float R0_MQ5 = 90000.0f;  
-float R0_MQ9 = 140000.0f; 
+// ===== R0 (kΩ) — đã đo trước =====
+float R0_MQ2 = 15000.0f;   // 11kΩ
+float R0_MQ5 = 135000.0f;  // 76kΩ
+float R0_MQ7 = 16000.0f;   // 3kΩ
 
-// ===== Hệ số log–log =====
-float m_MQ2_LPG   = -0.45f, b_MQ2_LPG   = 1.80f;
-float m_MQ2_H2    = -0.42f, b_MQ2_H2    = 1.65f;
-float m_MQ2_Smoke = -0.40f, b_MQ2_Smoke = 1.55f;
-float m_MQ5_LPG   = -0.42f, b_MQ5_LPG   = 1.60f;
-float m_MQ5_CH4   = -0.39f, b_MQ5_CH4   = 1.70f;
-float m_MQ9_CO    = -0.47f, b_MQ9_CO    = 1.70f;
-float m_MQ9_CH4   = -0.36f, b_MQ9_CH4   = 1.70f;
+float m_MQ2_Smoke = -0.70f, b_MQ2_Smoke = 2.40f; 
+float m_MQ7_CO    = -0.65f, b_MQ7_CO    = 2.10f;
+float m_MQ5_CH4   = -0.60f, b_MQ5_CH4   = 2.52f;  
+float m_MQ5_LPG   = -0.50f, b_MQ5_LPG   = 2.52f; 
 
-// ===== Biến thời gian =====
-static String fbRelay1 = "", fbRelay2 = "", fbRelay3 = "", fbRelay4 = "";
+
+/*================================= 6. BIẾN THỜI GIAN & ĐỒNG BỘ ========================*/
+String fbRelay1 = "", fbRelay2 = "", fbRelay3 = "", fbRelay4 = "";
+float t = 0, h = 0, smoke = 0, ch4 = 0, lpg = 0, co = 0, M_fire = 0, M_gas = 0;
 unsigned long lastSensorRead = 0;
 unsigned long lastFirebaseSend = 0;
 unsigned long lastThresholdSync = 0;
 bool wifiConnected = false;
 
-// ===== TFT UI =====
-const int xLabel = 10;
-const int xVal   = 120;
-const int yBase  = 35;
-const int lineHeight = 18;
-
-// ===== Hàm tiện ích cảm biến =====
-static inline int readADCavg(int pin, int N=8) {
-  long s = 0;
-  for (int i=0; i<N; i++) { s += analogRead(pin); delayMicroseconds(200); }
-  return (int)(s/N);
+/*================================= 7. HÀM TIỆN ÍCH CẢM BIẾN ===========================*/
+float safeFloat(float v, float fallback = 0.0f) {
+  if (isnan(v) || !isfinite(v)) return fallback;
+  return v;
 }
 
-static inline float adcToVadc(int adc) { return (adc/4095.0f)*ADC_REF; }
-static inline float vadcToVsensor(float vAdc) { return vAdc * AOUT_SCALE; }
+static inline int readADCavg(int pin, int N = 5) {
+  long sum = 0;
+  for (int i = 0; i < N; i++) {
+    sum += analogRead(pin);
+    delayMicroseconds(200);
+  }
+  return (int)(sum / N);
+}
+
+static inline float adcToVadc(int adc) {
+  return (adc / 4095.0f) * ADC_REF;
+}
+
+static inline float vadcToVsensor(float vAdc) {
+  return vAdc * AOUT_SCALE;
+}
+
 static inline float calcRs_from_Vsensor(float vSen) {
   if (vSen < 0.005f) vSen = 0.005f;
   if (vSen > (VCC_SENSOR - 0.02f)) vSen = VCC_SENSOR - 0.02f;
-  return RL_MODULE * (VCC_SENSOR / vSen - 1.0f); 
+  return RL_MODULE * (VCC_SENSOR / vSen - 1.0f);
 }
 
 static inline float MQ_ppm_fromADC(int adc, float R0, float m, float b, float ppmMin, float ppmMax) {
@@ -124,382 +205,655 @@ static inline float MQ_ppm_fromADC(int adc, float R0, float m, float b, float pp
   float Rs   = calcRs_from_Vsensor(Vsen);
   float ratio = Rs / R0;
   if (ratio <= 0) return 0.0f;
-
   float ppm_log = m * log10f(ratio) + b;
   float ppm = powf(10.0f, ppm_log);
   if (!isfinite(ppm)) ppm = 0;
-  if (ppm > ppmMax) ppm = ppmMax;
+  ppm = constrain(ppm, ppmMin, ppmMax);
   return ppm;
 }
 
-// ===== Hàm lấy thời gian =====
-String getDateTimeString() {
+
+/*================================= 8. HÀM THỜI GIAN ===================================*/
+String getDateString() {
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return "No Time";
-  }
-  char buf[30];
-  strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M", &timeinfo);
+  if (!getLocalTime(&timeinfo)) return "Date";
+  char buf[20];
+  strftime(buf, sizeof(buf), "%d/%m/%Y", &timeinfo);
   return String(buf);
 }
 
-// ===== Hàm giao diện TFT =====
-void showWiFiStatus(const char* msg, uint16_t color = ST77XX_WHITE) {
-  tft.fillScreen(ST77XX_BLACK);
+String getTimeString() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return "Time";
+  char buf[20];
+  strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
+  return String(buf);
+}
+
+
+/*================================= 9. HÀM VẼ KHUNG VIỀN ===============================*/
+void drawBorder(int x, int y, int w, int h, uint16_t color, int radius = 8) {
+  tft.drawRoundRect(x, y, w, h, radius, color);
+}
+
+void drawDoubleBorder(int x, int y, int w, int h, uint16_t color1, uint16_t color2, int radius = 8) {
+  tft.drawRoundRect(x, y, w, h, radius, color1);
+  tft.drawRoundRect(x + 1, y + 1, w - 2, h - 2, radius - 1, color2);
+}
+
+void drawShadowBorder(int x, int y, int w, int h, uint16_t borderColor, uint16_t shadowColor, int radius = 8) {
+  tft.drawRoundRect(x + 1, y + 1, w, h, radius, shadowColor);
+  tft.drawRoundRect(x, y, w, h, radius, borderColor);
+}
+
+
+/*================================= 10. GIAO DIỆN TFT ĐẸP  =================*/
+void drawGoldenFrame() {
+  const uint16_t color = ST77XX_YELLOW;
+  tft.drawRect(0, 0, SCREEN_W, SCREEN_H, color);     
+  tft.drawRect(1, 1, SCREEN_W - 2, SCREEN_H - 2, color); 
+}
+
+
+void drawHeader() {
+  tft.fillRect(2, 4, SCREEN_W - 4, 30, ST77XX_BLACK);   
+  tft.drawLine(2, 34, SCREEN_W - 2, 34, ST77XX_YELLOW);
   tft.setTextSize(2);
-  tft.setTextColor(color, ST77XX_BLACK);
-  tft.setCursor(20, 120);
-  tft.println(msg);
-  if (WiFi.status() == WL_CONNECTED) {
-    tft.setTextSize(2);
-    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-    tft.setCursor(20, 140);
-    tft.print("IP:");
-    tft.println(WiFi.localIP());
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(20, 10);
+  tft.println("FIRE ALARM SYSTEM");
+}
+
+void drawSunIcon(int x, int y, uint16_t color) {
+  tft.fillCircle(x + 8, y + 8, 6, color); 
+  for (int i = 0; i < 8; i++) {
+    float angle = i * 45 * PI / 180;
+    int dx = 10 * cos(angle);
+    int dy = 10 * sin(angle);
+    tft.drawLine(x + 8, y + 8, x + 8 + dx, y + 8 + dy, color);
   }
 }
 
-void drawUI() {
-  tft.fillScreen(ST77XX_BLACK);
-  tft.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(10, 5);
-  tft.println(" FIRE ALARM SYSTEM");
+void drawDropletIcon(int x, int y, uint16_t color) {
+  tft.fillCircle(x + 8, y + 10, 5, color);
+  tft.fillTriangle(x + 8, y + 3, x + 3, y + 11, x + 13, y + 11, color);
+}
+
+// === VẼ GIAO DIỆN TĨNH ===
+void drawStaticUI() {
+  tft.fillScreen(COLOR_BG);
+  drawGoldenFrame();
+  drawHeader();
+
+  // Temp Card
+  tft.fillRoundRect(10, 80, 105, 70, 8, ST77XX_BLACK);
+  drawDoubleBorder(10, 80, 105, 70, ST77XX_RED, ST77XX_RED, 8);
+  drawSunIcon(20, 92, ST77XX_RED);
+  tft.setTextSize(1); tft.setTextColor(ST77XX_RED);
+  tft.setCursor(42, 97); tft.println("TEMPERATURE");
+
+  // Hum Card
+  tft.fillRoundRect(125, 80, 105, 70, 8, ST77XX_BLACK);
+  drawDoubleBorder(125, 80, 105, 70, 0x001F, 0x001F, 8);
+  drawDropletIcon(135, 92, 0x001F);
+  tft.setTextSize(1); tft.setTextColor(0x001F);
+  tft.setCursor(157, 97); tft.println("HUMIDITY");
+
+  // MQ Card
+  tft.fillRoundRect(10, 155, 220, 80, 8, ST77XX_BLACK);
+  drawDoubleBorder(10, 155, 220, 80, ST77XX_YELLOW, ST77XX_YELLOW, 8);
+  tft.setTextSize(1); tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(90, 160); tft.println("GAS SENSORS");
+  tft.drawLine(15, 170, SCREEN_W - 15, 170, ST77XX_YELLOW);
+
+  tft.setTextColor(COLOR_DARK_YELLOW);
+  tft.setCursor(20, 180); tft.print("MQ2 SMOKE:");
+  tft.setCursor(20, 193); tft.print("MQ5 CH4  :");
+  tft.setCursor(20, 206); tft.print("MQ5 LPG  :");
+  tft.setCursor(20, 219); tft.print("MQ7 CO   :");
+
+  // Risk Bars
+  tft.fillRoundRect(10, 240, 105, 70, 8, ST77XX_BLACK);
+  drawDoubleBorder(10, 240, 105, 70, COLOR_FIRE, COLOR_FIRE, 8);
+  tft.setTextSize(1); tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(20, 248); tft.print("FIRE THRESHOLD");
+
+  tft.fillRoundRect(125, 240, 105, 70, 8, ST77XX_BLACK);
+  drawDoubleBorder(125, 240, 105, 70, COLOR_GAS, COLOR_GAS, 8);
+  tft.setTextSize(1); tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(135, 248); tft.print("GAS THRESHOLD");
+
+  // Mode & Time (sẽ được cập nhật động)
+  drawMode();
+}
+
+// === CẬP NHẬT CHỈ DỮ LIỆU ĐỘNG  ===
+
+// Hàm hỗ trợ: in cảnh báo không bị đè chữ
+void drawWarningText(int x, int y, const String &text, uint16_t color) {
+  // Xóa vùng chữ cũ (rộng hơn chiều dài chuỗi dài nhất)
+  tft.fillRect(x - 5, y - 2, 84, 14, ST77XX_BLACK);
+
+  // In chuỗi mới
   tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-  int y = yBase;
-  const char* labels[] = {
-    "Date/Time :", "Mode      :", "Temp      :", "Humidity  :", 
-    "MQ2(Smoke):", "MQ2(LPG)  :", "MQ2(H2)   :", "MQ5(CH4)  :", 
-    "MQ5(LPG)  :", "MQ9(CO)   :", "MQ9(CH4)  :", "Fan1      :", 
-    "Fan2      :", "Buzzer    :", "Pump      :", "Warning   :"
-  };
-  for (int i=0; i<16; i++) { 
-    tft.setCursor(xLabel, y); 
-    tft.println(labels[i]); 
-    y += lineHeight; 
+  tft.setTextColor(color);
+  tft.setCursor(x, y);
+  tft.print(text);
+}
+
+
+void updateDynamicData(float t, float h, float smoke, float ch4, float lpg, float co,
+                       float M_fire, float M_gas) {
+
+  // Cập nhật nhiệt độ
+  tft.fillRect(20, 118, 55, 20, ST77XX_BLACK);
+  tft.setTextSize(2); tft.setTextColor(COLOR_LIGHT_RED);
+  tft.setCursor(20, 118); tft.printf("%.1f", t);
+  tft.setCursor(75, 118); tft.print((char)247); tft.print("C");
+
+  // Cập nhật độ ẩm
+  tft.fillRect(135, 118, 55, 20, ST77XX_BLACK);
+  tft.setTextSize(2); tft.setTextColor(COLOR_LIGHT_BLUE);
+  tft.setCursor(135, 118); tft.printf("%.1f", h);
+  tft.setCursor(190, 118); tft.print("%RH");
+
+  // Cập nhật MQ
+  tft.fillRect(80, 180, 80, 10, ST77XX_BLACK);
+  tft.fillRect(80, 193, 80, 10, ST77XX_BLACK);
+  tft.fillRect(80, 206, 80, 10, ST77XX_BLACK);
+  tft.fillRect(80, 219, 80, 10, ST77XX_BLACK);
+
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_LIGHT_YELLOW);
+
+  tft.setCursor(80, 180); tft.printf("%4d ppm", (int)smoke);
+  tft.setCursor(80, 193); tft.printf("%4d ppm", (int)ch4);
+  tft.setCursor(80, 206); tft.printf("%4d ppm", (int)lpg);
+  tft.setCursor(80, 219); tft.printf("%4d ppm", (int)co);
+
+  // Thanh FIRE
+  int barY = 282;
+  int barW = 85;
+  int fillW = (int)(M_fire * barW / 100.0f);
+  tft.fillRect(20, barY, barW, 6, 0xDEFB);
+  if (fillW > 0) tft.fillRoundRect(20, barY, fillW, 6, 2, COLOR_FIRE);
+
+  tft.fillRect(25, 262, 50, 16, ST77XX_BLACK);
+  tft.setTextSize(2); tft.setTextColor(COLOR_FIRE);
+  tft.setCursor(25, 262); tft.printf("%.1f", M_fire);
+  tft.setCursor(75, 262); tft.print("%");
+
+  String warnFire = getFireWarning(M_fire);
+  uint16_t warnColor = (warnFire == "An toan") ? COLOR_DARK_GREEN :
+                       (warnFire == "Theo Doi") ? COLOR_DARK_YELLOW : ST77XX_RED;
+                       
+  drawWarningText(25, 292, warnFire, warnColor);
+
+  // Thanh GAS
+  fillW = (int)(M_gas * barW / 100.0f);
+  tft.fillRect(135, barY, barW, 6, 0xDEFB);
+  if (fillW > 0) tft.fillRoundRect(135, barY, fillW, 6, 2, COLOR_GAS);
+
+  tft.fillRect(140, 262, 50, 16, ST77XX_BLACK);
+  tft.setTextSize(2); tft.setTextColor(COLOR_GAS);
+  tft.setCursor(140, 262); tft.printf("%.1f", M_gas);
+  tft.setCursor(190, 262); tft.print("%");
+
+  String warnGas = getGasWarning(M_gas);
+  warnColor = (warnGas == "An toan") ? COLOR_DARK_GREEN :
+              (warnGas == "Theo Doi") ? COLOR_DARK_YELLOW : ST77XX_RED;
+
+  drawWarningText(140, 292, warnGas, warnColor);
+
+  // Nhấp nháy viền khi nguy hiểm
+  static unsigned long lastBlink = 0;
+  static bool blinkState = false;
+  if (millis() - lastBlink > 300) {
+    blinkState = !blinkState;
+    lastBlink = millis();
+  }
+  if ((M_fire >= thresh_fire[2] || M_gas >= thresh_gas[2]) && blinkState) {
+    if (M_fire >= thresh_fire[2]) drawDoubleBorder(10, 240, 105, 70, ST77XX_WHITE, ST77XX_RED, 8);
+    if (M_gas >= thresh_gas[2]) drawDoubleBorder(125, 240, 105, 70, ST77XX_WHITE, ST77XX_RED, 8);
+  }
+
+  // Cập nhật Mode & Thời gian mỗi 1s
+  static unsigned long lastTimeUpdate = 0;
+  if (millis() - lastTimeUpdate >= 1000) {
+    drawMode();
+    lastTimeUpdate = millis();
   }
 }
 
-void updateValue(int x, int y, float newVal, float &oldVal, const char* fmt, uint16_t color) {
-  if (fabs(newVal - oldVal) > 0.01) {
-    tft.fillRect(x, y, 120, 15, ST77XX_BLACK);
-    tft.setCursor(x, y);
-    tft.setTextColor(color, ST77XX_BLACK);
-    tft.printf(fmt, newVal);
-    oldVal = newVal;
-  }
+void drawMode() {
+  uint16_t borderColor = (mode == 0) ? ST77XX_GREEN : ST77XX_YELLOW;
+  tft.fillRoundRect(10, 45, 100, 25, 5, ST77XX_BLACK);
+  drawDoubleBorder(10, 45, 100, 25, borderColor, borderColor, 5);
+  tft.setTextSize(1); tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(45, 55); tft.print(mode ? "MANUAL" : "AUTO");
+
+  String dateStr = getDateString();
+  String timeStr = getTimeString().substring(0, 5);
+  String displayStr = dateStr + " " + timeStr;
+
+  int x_time = 120;
+  tft.fillRoundRect(x_time, 45, 115, 25, 5, ST77XX_BLACK);
+  drawDoubleBorder(x_time, 45, 115, 25, BORDER_ACCENT, BORDER_ACCENT, 5);
+  tft.setTextSize(1); tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(x_time + 10, 55); tft.print(displayStr);
 }
 
-void updateText(int x, int y, const String &newText, String &oldText, uint16_t color) {
-  if (newText != oldText) {
-    tft.fillRect(x, y, 120, 15, ST77XX_BLACK);
-    tft.setCursor(x, y);
-    tft.setTextColor(color, ST77XX_BLACK);
-    tft.print(newText);
-    oldText = newText;
-  }
+String getFireWarning(float M_fire) {
+  if (M_fire >= thresh_fire[4]) return "Khan Cap";
+  if (M_fire >= thresh_fire[3]) return "Rat Nguy Hiem";
+  if (M_fire >= thresh_fire[2]) return "Nguy Hiem";
+  if (M_fire >= thresh_fire[1]) return "Theo Doi";
+  return "An toan";
 }
 
-// ===== Hàm xử lý nút nhấn =====
-bool checkButton(int pin) {
-  static unsigned long lastDebounce[50] = {0};
-  static int lastState[50] = {LOW};
-  bool pressed = false;
-  int reading = digitalRead(pin);
-  if (reading != lastState[pin]) {
-    lastDebounce[pin] = millis();
-  }
-  if ((millis() - lastDebounce[pin]) > 50) {
-    if (lastState[pin] == LOW && reading == HIGH) {
-      pressed = true;
-    }
-  }
-  lastState[pin] = reading;
-  return pressed;
+String getGasWarning(float M_gas) {
+  if (M_gas >= thresh_gas[4]) return "Khan Cap";
+  if (M_gas >= thresh_gas[3]) return "Rat Nguy Hiem";
+  if (M_gas >= thresh_gas[2]) return "Nguy Hiem";
+  if (M_gas >= thresh_gas[1]) return "Theo Doi";
+  return "An toan";
 }
 
+// === GỌI CẬP NHẬT MÀN HÌNH ===
+void updateTFT(float t, float h, float mq2_Smoke, float mq5_CH4, float mq5_LPG, float mq7_CO,
+               float M_fire, float M_gas) {
+  updateDynamicData(t, h, mq2_Smoke, mq5_CH4, mq5_LPG, mq7_CO, M_fire, M_gas);
+}
+
+/*============================= 11. XỬ LÝ NÚT NHẤN & RELAY =============================*/
 void handleButtons() {
-  static int lastBtn1=LOW, lastBtn2=LOW, lastBtn3=LOW, lastBtn4=LOW, lastMode=LOW;
-  int stBtn1 = digitalRead(BTN_RELAY1);
-  int stBtn2 = digitalRead(BTN_RELAY2);
-  int stBtn3 = digitalRead(BTN_RELAY3);
-  int stBtn4 = digitalRead(BTN_RELAY4);
-  int stMode = digitalRead(BTN_MODE);
+  static bool lastBtn1 = false, lastBtn2 = false, lastBtn3 = false, lastBtn4 = false, lastMode = false;
+  bool stBtn1 = !digitalRead(BTN_RELAY1);
+  bool stBtn2 = !digitalRead(BTN_RELAY2);
+  bool stBtn3 = !digitalRead(BTN_RELAY3);
+  bool stBtn4 = !digitalRead(BTN_RELAY4);
+  bool stMode = !digitalRead(BTN_MODE);
 
-  if (lastMode == LOW && stMode == HIGH) {
+  if (!digitalRead(BTN_RESET)) {
+    Serial.println("Reset pressed!");
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setTextColor(ST77XX_RED); tft.setTextSize(2);
+    tft.setCursor(20, 120); tft.println("Restarting...");
+    delay(1000);
+    ESP.restart();
+  }
+
+  if (!lastMode && stMode) {
     mode = !mode;
-    Serial.printf("Chuyen che do (nut nhan): %s\n", mode ? "MANUAL" : "AUTO");
+    Serial.printf("Mode: %s\n", mode ? "Manual" : "Auto");
     if (Firebase.ready()) {
-      Firebase.RTDB.setString(&firebaseData, "users/0776707441/123456/ESP32/Device/Mode", mode ? "Manual" : "Auto");
+      Firebase.RTDB.setString(&firebaseData, "ESP32/Control/Mode", mode ? "Manual" : "Auto");
     }
     relay1State = relay2State = relay3State = relay4State = false;
-    digitalWrite(RELAY1, LOW);
-    digitalWrite(RELAY2, LOW);
-    digitalWrite(RELAY3, LOW);
-    digitalWrite(RELAY4, LOW);
+    digitalWrite(RELAY1, LOW); digitalWrite(RELAY2, LOW);
+    digitalWrite(RELAY3, LOW); digitalWrite(RELAY4, LOW);
     delay(200);
   }
   lastMode = stMode;
 
   if (mode == 1) {
-    if (lastBtn1 == LOW && stBtn1 == HIGH) {
-      relay1State = !relay1State;
-      digitalWrite(RELAY1, relay1State ? HIGH : LOW);
-      Serial.printf("Manual → QUAT1 (Relay1): %s\n", relay1State ? "ON" : "OFF");
-      delay(100);
-    }
-    if (lastBtn2 == LOW && stBtn2 == HIGH) {
-      relay2State = !relay2State;
-      digitalWrite(RELAY2, relay2State ? HIGH : LOW);
-      Serial.printf("Manual → QUAT2 (Relay2): %s\n", relay2State ? "ON" : "OFF");
-      delay(100);
-    }
-    if (lastBtn3 == LOW && stBtn3 == HIGH) {
-      relay3State = !relay3State;
-      digitalWrite(RELAY3, relay3State ? HIGH : LOW);
-      Serial.printf("Manual → COI (Relay3): %s\n", relay3State ? "ON" : "OFF");
-      delay(100);
-    }
-    if (lastBtn4 == LOW && stBtn4 == HIGH) {
-      relay4State = !relay4State;
-      digitalWrite(RELAY4, relay4State ? HIGH : LOW);
-      Serial.printf("Manual → MAY BOM (Relay4): %s\n", relay4State ? "ON" : "OFF");
-      delay(100);
-    }
+    if (!lastBtn1 && stBtn1) { relay1State = !relay1State; digitalWrite(RELAY1, relay1State); delay(100); }
+    if (!lastBtn2 && stBtn2) { relay2State = !relay2State; digitalWrite(RELAY2, relay2State); delay(100); }
+    if (!lastBtn3 && stBtn3) { relay3State = !relay3State; digitalWrite(RELAY3, relay3State); delay(100); }
+    if (!lastBtn4 && stBtn4) { relay4State = !relay4State; digitalWrite(RELAY4, relay4State); delay(100); }
   }
-  lastBtn1 = stBtn1;
-  lastBtn2 = stBtn2;
-  lastBtn3 = stBtn3;
-  lastBtn4 = stBtn4;
+
+  lastBtn1 = stBtn1; lastBtn2 = stBtn2; lastBtn3 = stBtn3; lastBtn4 = stBtn4;
 }
 
-// ===== Hàm điều khiển relay =====
-void controlRelays(const String &warning) {
-  if (warning == "An toan") {
-    // Giữ trạng thái thủ công hiện tại
-    digitalWrite(RELAY1, relay1State ? HIGH : LOW);
-    digitalWrite(RELAY2, relay2State ? HIGH : LOW);
-    digitalWrite(RELAY3, relay3State ? HIGH : LOW);
-    digitalWrite(RELAY4, relay4State ? HIGH : LOW);
+void controlRelays(float M_fire, float M_gas) {
+
+  // ===== 1. Xác định mức nguy hiểm riêng cho từng loại =====
+  bool fireDanger = (M_fire >= thresh_fire[2]);
+  bool gasDanger  = (M_gas >= thresh_gas[2]);   
+
+  // ===== 2. Xử lý từng trường hợp =====
+  if (fireDanger && gasDanger) {
+    digitalWrite(RELAY1, HIGH);  // Còi hú
+    digitalWrite(RELAY2, HIGH);  // Quạt 1
+    digitalWrite(RELAY3, HIGH);  // Quạt 2
+    digitalWrite(RELAY4, HIGH);  // Máy bơm
   }
-  // Cháy + Khói + Gas
-  else if (warning.indexOf("Chay") >= 0 && warning.indexOf("Khoi") >= 0 && warning.indexOf("Gas") >= 0) {
-    digitalWrite(RELAY1, HIGH);  // Quạt
-    digitalWrite(RELAY2, HIGH);  // Quạt
-    digitalWrite(RELAY3, HIGH);  // Còi
-    digitalWrite(RELAY4, HIGH);  // Bơm
+
+  else if (fireDanger) {
+    digitalWrite(RELAY1, HIGH);  // Còi hú
+    digitalWrite(RELAY2, LOW);
+    digitalWrite(RELAY3, LOW);
+    digitalWrite(RELAY4, HIGH);  // Máy bơm
   }
-  // Cháy + Gas
-  else if (warning.indexOf("Chay") >= 0 && warning.indexOf("Gas") >= 0) {
-    digitalWrite(RELAY1, HIGH);
-    digitalWrite(RELAY2, HIGH);
-    digitalWrite(RELAY3, HIGH);
-    digitalWrite(RELAY4, HIGH);
-  }
-  // Cháy + Khói
-  else if (warning.indexOf("Chay") >= 0 && warning.indexOf("Khoi") >= 0) {
-    digitalWrite(RELAY1, HIGH);
-    digitalWrite(RELAY2, HIGH);
-    digitalWrite(RELAY3, HIGH);
-    digitalWrite(RELAY4, HIGH);
-  }
-  // Gas + Khói
-  else if (warning.indexOf("Gas") >= 0 && warning.indexOf("Khoi") >= 0) {
-    digitalWrite(RELAY1, HIGH);
-    digitalWrite(RELAY2, HIGH);
-    digitalWrite(RELAY3, HIGH);
-    digitalWrite(RELAY4, LOW);   
-  }
-  // Chỉ Cháy
-  else if (warning.indexOf("Chay") >= 0) {
-    digitalWrite(RELAY1, HIGH);
-    digitalWrite(RELAY2, HIGH);
-    digitalWrite(RELAY3, HIGH);
-    digitalWrite(RELAY4, HIGH);
-  }
-  // Chỉ Gas
-  else if (warning.indexOf("Gas") >= 0) {
-    digitalWrite(RELAY1, HIGH);
-    digitalWrite(RELAY2, HIGH);
-    digitalWrite(RELAY3, HIGH);
+
+  else if (gasDanger) {
+    digitalWrite(RELAY1, HIGH);  // Còi hú
+    digitalWrite(RELAY2, HIGH);  // Quạt 1
+    digitalWrite(RELAY3, HIGH);  // Quạt 2
     digitalWrite(RELAY4, LOW);
   }
-  // Chỉ Khói
-  else if (warning.indexOf("Khoi") >= 0) {
-    digitalWrite(RELAY1, HIGH);
-    digitalWrite(RELAY2, HIGH);
+  else {
+    digitalWrite(RELAY1, LOW);
+    digitalWrite(RELAY2, LOW);
     digitalWrite(RELAY3, LOW);
     digitalWrite(RELAY4, LOW);
   }
 }
 
-// ===== Hàm xét ngưỡng cảnh báo theo 5 cấp độ =====
-void getWarningAndTitle(float M_fire, float M_gas, float M_khoi, String &warning, String &title) {
-  warning = "An toan";
-  title   = "Binh thuong";
 
-  // Ưu tiên 1: Cháy + Khói + Gas
-  if (M_fire >= thresh_fire[1] && M_gas >= thresh_gas[1] && M_khoi >= thresh_khoi[1]) {
-    if (M_fire >= thresh_fire[4] || M_gas >= thresh_gas[4] || M_khoi >= thresh_khoi[4]) {
-      warning = "Khan Cap (Chay + Khoi + Gas)";
-      title   = "Chay lon, khoi dac dac, ro ri gas nghiem trong";
-    } else if (M_fire >= thresh_fire[3] || M_gas >= thresh_gas[3] || M_khoi >= thresh_khoi[3]) {
-      warning = "Rat Nguy Hiem (Chay + Khoi + Gas)";
-      title   = "Chay lon, khoi nhieu, ro ri gas";
-    } else if (M_fire >= thresh_fire[2] || M_gas >= thresh_gas[2] || M_khoi >= thresh_khoi[2]) {
-      warning = "Nguy Hiem (Chay + Khoi + Gas)";
-      title   = "Nguy co chay, co khoi va ro ri gas";
-    } else {
-      warning = "Theo Doi (Chay + Khoi + Gas)";
-      title   = "Phat hien lua, khoi va gas";
+/*============================= 12. TÍNH MỨC NGUY HIỂM ===============================*/
+void calculateRisk(float t, float h, float mq2_Smoke, float mq5_CH4, float mq5_LPG, float mq7_CO,
+                   float &M_fire, float &M_gas) {
+
+  const float alpha = 0.2f;  // hệ số làm mượt 
+
+  // ======== CAMP giá trị từng yếu tố để ổn định hơn ========
+  static float camp_temp  = 0.0f;
+  static float camp_smoke = 0.0f;
+  static float camp_co    = 0.0f;
+  static float camp_hum   = 0.0f;
+  static float camp_ch4   = 0.0f;
+  static float camp_lpg   = 0.0f;
+
+  // ======== Giới hạn và chuẩn hóa từng giá trị (0–100%) ========
+  float temp_part  = (min(t, 80.0f) / 80.0f) * 100.0f;
+  float smoke_part = (min(mq2_Smoke, 1000.0f) / 1000.0f) * 100.0f;
+  float co_part    = (min(mq7_CO, 400.0f) / 400.0f) * 100.0f;
+  float hum_part   = ((100.0f - min(h, 100.0f)) / 100.0f) * 100.0f;
+  float ch4_part   = (min(mq5_CH4, 3000.0f) / 3000.0f) * 100.0f;
+  float lpg_part   = (min(mq5_LPG, 2000.0f) / 2000.0f) * 100.0f;
+
+  // ======== Lọc mượt từng thành phần ========
+  camp_temp  = camp_temp  * (1 - alpha) + temp_part  * alpha;
+  camp_smoke = camp_smoke * (1 - alpha) + smoke_part * alpha;
+  camp_co    = camp_co    * (1 - alpha) + co_part    * alpha;
+  camp_hum   = camp_hum   * (1 - alpha) + hum_part   * alpha;
+  camp_ch4   = camp_ch4   * (1 - alpha) + ch4_part   * alpha;
+  camp_lpg   = camp_lpg   * (1 - alpha) + lpg_part   * alpha;
+
+  // ======== 1. Mức nguy hiểm cháy ========
+  M_fire = w_fire_temp  * camp_temp
+         + w_fire_smoke * camp_smoke
+         + w_fire_co    * camp_co
+         + w_fire_hum   * camp_hum
+         + w_fire_ch4   * camp_ch4
+         + w_fire_lpg   * camp_lpg;
+
+  M_fire = constrain(M_fire, 0.0f, 100.0f);
+
+  // ======== CAMP riêng cho phần gas ========
+  static float camp_ch4_gas = 0.0f;
+  static float camp_lpg_gas = 0.0f;
+  static float camp_co_gas  = 0.0f;
+
+  camp_ch4_gas = camp_ch4_gas * (1 - alpha) + ch4_part * alpha;
+  camp_lpg_gas = camp_lpg_gas * (1 - alpha) + lpg_part * alpha;
+  camp_co_gas  = camp_co_gas  * (1 - alpha) + co_part  * alpha;
+
+  // ======== 2. Mức nguy hiểm khí gas ========
+  M_gas = w_gas_ch4 * camp_ch4_gas
+        + w_gas_lpg * camp_lpg_gas
+        + w_gas_co  * camp_co_gas;
+
+  M_gas = constrain(M_gas, 0.0f, 100.0f);
+}
+
+
+void addAnalysisLevel(String &analysis, float value, float vlow, float low, float high, float vhigh,
+                      const char* name, const char* unit) {
+  String part = "";
+  if (value >= vhigh) part = String(name) + " rất cao (" + String(value, (unit[0] == '%') ? 1 : 0) + unit + ")";
+  else if (value >= high) part = String(name) + " cao (" + String(value, (unit[0] == '%') ? 1 : 0) + unit + ")";
+  else if (value >= low) part = String(name) + " thấp (" + String(value, (unit[0] == '%') ? 1 : 0) + unit + ")";
+  else if (value >= vlow) part = String(name) + " rất thấp (" + String(value, (unit[0] == '%') ? 1 : 0) + unit + ")";
+  if (part != "" && analysis != "") analysis += ", ";
+  if (part != "") analysis += part;
+}
+
+String getDetailedFireAnalysis(float t, float h, float smoke, float ch4, float lpg, float co, float M_fire) {
+  String analysis = "";
+  addAnalysisLevel(analysis, t,     threshold.temp_very_low,  threshold.temp_low,  threshold.temp_high,  threshold.temp_very_high,  "Nhiệt độ", "°C");
+  addAnalysisLevel(analysis, h,     threshold.hum_very_low,   threshold.hum_low,   threshold.hum_high,   threshold.hum_very_high,   "Độ ẩm", "%");
+  addAnalysisLevel(analysis, smoke, threshold.smoke_very_low, threshold.smoke_low, threshold.smoke_high, threshold.smoke_very_high, "Khói", " ppm");
+  addAnalysisLevel(analysis, co,    threshold.co_very_low,    threshold.co_low,    threshold.co_high,    threshold.co_very_high,    "Khí CO", " ppm");
+  addAnalysisLevel(analysis, ch4,   threshold.ch4_very_low,  threshold.ch4_low,   threshold.ch4_high,   threshold.ch4_very_high,   "Khí CH4", " ppm");
+  addAnalysisLevel(analysis, lpg,   threshold.lpg_very_low,  threshold.lpg_low,   threshold.lpg_high,   threshold.lpg_very_high,   "Khí LPG", " ppm");
+
+  if (analysis != "") analysis += ", ";
+  if (M_fire >= thresh_fire[4]) analysis += "Mức cháy: Khẩn cấp";
+  else if (M_fire >= thresh_fire[3]) analysis += "Mức cháy: Rất cao";
+  else if (M_fire >= thresh_fire[2]) analysis += "Mức cháy: Cao";
+  else if (M_fire >= thresh_fire[1]) analysis += "Mức cháy: Cần theo dõi";
+  else analysis += "Mức cháy: An toàn";
+
+  if (analysis == "") analysis = "Không phát hiện bất thường.";
+  analysis.trim();
+  return analysis;
+}
+
+String getDetailedGasAnalysis(float ch4, float lpg, float co, float M_gas) {
+  String analysis = "";
+  addAnalysisLevel(analysis, ch4, threshold.ch4_very_low, threshold.ch4_low, threshold.ch4_high, threshold.ch4_very_high, "Khí CH4", " ppm");
+  addAnalysisLevel(analysis, lpg, threshold.lpg_very_low, threshold.lpg_low, threshold.lpg_high, threshold.lpg_very_high, "Khí LPG", " ppm");
+  addAnalysisLevel(analysis, co,  threshold.co_very_low,  threshold.co_low,  threshold.co_high,  threshold.co_very_high,  "Khí CO", " ppm");
+  
+  if (analysis != "") analysis += ", ";
+  if (M_gas >= thresh_gas[4]) analysis += "Mức khí gas: Khẩn cấp ";
+  else if (M_gas >= thresh_gas[3]) analysis += "Mức khí gas: Rất cao ";
+  else if (M_gas >= thresh_gas[2]) analysis += "Mức khí gas: Cao ";
+  else if (M_gas >= thresh_gas[1]) analysis += "Mức khí gas: Cần theo dõi ";
+  else analysis += "Mức khí gas: An toàn";
+
+  if (analysis == "") analysis = "Không phát hiện bất thường.";
+  analysis.trim();
+  return analysis;
+}
+
+
+/*================================= 14. ĐỒNG BỘ FIREBASE ===============================*/
+void syncFirebaseModeAndRelays() {
+  if (!Firebase.ready()) return;
+
+  // Đọc node ESP32/Control 1 lần duy nhất
+  if (!Firebase.RTDB.getJSON(&firebaseData, "ESP32/Control")) return;
+  FirebaseJson &json = firebaseData.jsonObject();
+  FirebaseJsonData data;
+
+  // ==== MODE ====
+  if (json.get(data, "Mode") && data.type == "string") {
+    String fbMode = data.stringValue;
+    int newMode = (fbMode == "Manual") ? 1 : 0;
+    if (newMode != mode) {
+      mode = newMode;
+      // Khi đổi mode -> reset toàn bộ relay để tránh trạng thái sai
+      relay1State = relay2State = relay3State = relay4State = false;
+      digitalWrite(RELAY1, LOW);
+      digitalWrite(RELAY2, LOW);
+      digitalWrite(RELAY3, LOW);
+      digitalWrite(RELAY4, LOW);
     }
   }
-  // Ưu tiên 2: Cháy + Gas
-  else if (M_fire >= thresh_fire[1] && M_gas >= thresh_gas[1]) {
-    if (M_fire >= thresh_fire[4] || M_gas >= thresh_gas[4]) {
-      warning = "Khan Cap (Chay + Gas)";
-      title   = "Chay lon + ro ri gas nghiem trong";
-    } else if (M_fire >= thresh_fire[3] || M_gas >= thresh_gas[3]) {
-      warning = "Rat Nguy Hiem (Chay + Gas)";
-      title   = "Chay lon ket hop ro ri gas";
-    } else if (M_fire >= thresh_fire[2] || M_gas >= thresh_gas[2]) {
-      warning = "Nguy Hiem (Chay + Gas)";
-      title   = "Nguy co chay, ro ri gas";
-    } else {
-      warning = "Theo Doi (Chay + Gas)";
-      title   = "Phat hien lua va gas";
-    }
-  }
-  // Ưu tiên 3: Cháy + Khói
-  else if (M_fire >= thresh_fire[1] && M_khoi >= thresh_khoi[1]) {
-    if (M_fire >= thresh_fire[4] || M_khoi >= thresh_khoi[4]) {
-      warning = "Khan Cap (Chay + Khoi)";
-      title   = "Chay lon, khoi dac dac";
-    } else if (M_fire >= thresh_fire[3] || M_khoi >= thresh_khoi[3]) {
-      warning = "Rat Nguy Hiem (Chay + Khoi)";
-      title   = "Chay lon, khoi rat nhieu";
-    } else if (M_fire >= thresh_fire[2] || M_khoi >= thresh_khoi[2]) {
-      warning = "Nguy Hiem (Chay + Khoi)";
-      title   = "Co chay, khoi nhieu";
-    } else {
-      warning = "Theo Doi (Chay + Khoi)";
-      title   = "Phat hien lua va khoi";
-    }
-  }
-  // Ưu tiên 4: Gas + Khói
-  else if (M_gas >= thresh_gas[1] && M_khoi >= thresh_khoi[1]) {
-    if (M_gas >= thresh_gas[4] || M_khoi >= thresh_khoi[4]) {
-      warning = "Khan Cap (Gas + Khoi)";
-      title   = "Ro ri gas lon, khoi dac dac";
-    } else if (M_gas >= thresh_gas[3] || M_khoi >= thresh_khoi[3]) {
-      warning = "Rat Nguy Hiem (Gas + Khoi)";
-      title   = "Gas nhieu, khoi nhieu";
-    } else if (M_gas >= thresh_gas[2] || M_khoi >= thresh_khoi[2]) {
-      warning = "Nguy Hiem (Gas + Khoi)";
-      title   = "Ro ri gas, co khoi";
-    } else {
-      warning = "Theo Doi (Gas + Khoi)";
-      title   = "Phat hien gas va khoi";
-    }
-  }
-  // Ưu tiên 5: Chỉ Cháy
-  else if (M_fire >= thresh_fire[1]) {
-    if (M_fire >= thresh_fire[4]) {
-      warning = "Khan Cap (Chay)";
-      title   = "Nguy co chay lon rat cao";
-    } else if (M_fire >= thresh_fire[3]) {
-      warning = "Rat Nguy Hiem (Chay)";
-      title   = "Chay lon, can xu ly ngay";
-    } else if (M_fire >= thresh_fire[2]) {
-      warning = "Nguy Hiem (Chay)";
-      title   = "Sap co nguy co chay";
-    } else {
-      warning = "Theo Doi (Chay)";
-      title   = "Phat hien chay";
-    }
-  }
-  // Ưu tiên 6: Chỉ Gas
-  else if (M_gas >= thresh_gas[1]) {
-    if (M_gas >= thresh_gas[4]) {
-      warning = "Khan Cap (Gas)";
-      title   = "Ro ri gas rat lon, de nguy hiem";
-    } else if (M_gas >= thresh_gas[3]) {
-      warning = "Rat Nguy Hiem (Gas)";
-      title   = "Ro ri gas lon, nguy co no";
-    } else if (M_gas >= thresh_gas[2]) {
-      warning = "Nguy Hiem (Gas)";
-      title   = "Ro ri gas trung binh";
-    } else {
-      warning = "Theo Doi (Gas)";
-      title   = "Phat hien khi gas";
-    }
-  }
-  // Ưu tiên 7: Chỉ Khói
-  else if (M_khoi >= thresh_khoi[1]) {
-    if (M_khoi >= thresh_khoi[4]) {
-      warning = "Khan Cap (Khoi)";
-      title   = "Khoi dac dac, kho tho";
-    } else if (M_khoi >= thresh_khoi[3]) {
-      warning = "Rat Nguy Hiem (Khoi)";
-      title   = "Khoi rat nhieu trong khong khi";
-    } else if (M_khoi >= thresh_khoi[2]) {
-      warning = "Nguy Hiem (Khoi)";
-      title   = "Khoi o muc trung binh";
-    } else {
-      warning = "Theo Doi (Khoi)";
-      title   = "Phat hien khoi";
+
+  // ==== RELAYS ====
+  if (mode == 1) { // chỉ đồng bộ khi Manual
+    String keys[4] = {"Relay1", "Relay2", "Relay3", "Relay4"};
+    bool* relayStates[4] = {&relay1State, &relay2State, &relay3State, &relay4State};
+    int relayPins[4] = {RELAY1, RELAY2, RELAY3, RELAY4};
+    String* fbRelays[4] = {&fbRelay1, &fbRelay2, &fbRelay3, &fbRelay4};
+
+    for (int i = 0; i < 4; i++) {
+      if (json.get(data, keys[i].c_str()) && data.type == "string") {
+        String v = data.stringValue;
+        // Kiểm tra giá trị hợp lệ: chỉ nhận "ON"/"OFF"
+        if (v == "ON" || v == "OFF") {
+          if (v != *fbRelays[i]) {
+            *relayStates[i] = (v == "ON");
+            digitalWrite(relayPins[i], *relayStates[i]);
+            *fbRelays[i] = v;
+          }
+        }
+      }
     }
   }
 }
 
-// ===== Hàm khởi tạo phần cứng và kết nối =====
+
+void syncFireWeightsFromFirebase() {
+  if (!Firebase.ready()) return;
+  if (Firebase.RTDB.getJSON(&firebaseData, "ESP32/Threshold/FireWeight")) {
+    FirebaseJson &json = firebaseData.jsonObject();
+    FirebaseJsonData data;
+    if (json.get(data, "temp"))  w_fire_temp  = data.floatValue;
+    if (json.get(data, "hum"))   w_fire_hum   = data.floatValue;
+    if (json.get(data, "smoke")) w_fire_smoke = data.floatValue;
+    if (json.get(data, "co"))    w_fire_co    = data.floatValue;
+    if (json.get(data, "ch4"))   w_fire_ch4   = data.floatValue;
+    if (json.get(data, "lpg"))   w_fire_lpg   = data.floatValue;
+    Serial.println("✅ Firebase: Đồng bộ FireWeight thành công!");
+  }
+}
+
+void syncGasWeightsFromFirebase() {
+  if (!Firebase.ready()) return;
+  if (Firebase.RTDB.getJSON(&firebaseData, "ESP32/Threshold/GasWeight")) {
+    FirebaseJson &json = firebaseData.jsonObject();
+    FirebaseJsonData data;
+    if (json.get(data, "ch4")) w_gas_ch4 = data.floatValue;
+    if (json.get(data, "lpg")) w_gas_lpg = data.floatValue;
+    if (json.get(data, "co"))  w_gas_co  = data.floatValue;
+    Serial.println("✅ Firebase: Đồng bộ GasWeight thành công!");
+  }
+}
+
+void syncLevelFromFirebase() {
+  if (!Firebase.ready()) return;
+
+  if (Firebase.RTDB.getJSON(&firebaseData, "ESP32/Threshold/Level")) {
+    FirebaseJson &json = firebaseData.jsonObject();
+    FirebaseJsonData data;
+
+    // Fire levels
+    if (json.get(data, "fire1")) thresh_fire[1] = data.intValue;
+    if (json.get(data, "fire2")) thresh_fire[2] = data.intValue;
+    if (json.get(data, "fire3")) thresh_fire[3] = data.intValue;
+    if (json.get(data, "fire4")) thresh_fire[4] = data.intValue;
+
+    // Gas levels
+    if (json.get(data, "gas1")) thresh_gas[1] = data.intValue;
+    if (json.get(data, "gas2")) thresh_gas[2] = data.intValue;
+    if (json.get(data, "gas3")) thresh_gas[3] = data.intValue;
+    if (json.get(data, "gas4")) thresh_gas[4] = data.intValue;
+    Serial.println("✅ Firebase: Đồng bộ Level thành công!");
+  }
+}
+
+
+void sendToFirebase(float t, float h, float mq2_Smoke, float mq5_CH4, float mq5_LPG, float mq7_CO,
+                    float M_fire, float M_gas) {
+  String currentDate = getDateString();
+  String currentTime = getTimeString();
+  t         = safeFloat(t);
+  h         = safeFloat(h);
+  mq2_Smoke = safeFloat(mq2_Smoke);
+  mq5_CH4   = safeFloat(mq5_CH4);
+  mq5_LPG   = safeFloat(mq5_LPG);
+  mq7_CO    = safeFloat(mq7_CO);
+  M_fire    = safeFloat(M_fire);
+  M_gas     = safeFloat(M_gas);
+
+  json.clear();
+  json.set("date", currentDate);
+  json.set("time", currentTime);
+  json.set("temperature", t);
+  json.set("humidity", h);
+  json.set("mq2_Smoke", mq2_Smoke);
+  json.set("mq5_CH4", mq5_CH4);
+  json.set("mq5_LPG", mq5_LPG);
+  json.set("mq7_CO", mq7_CO);
+  json.set("M_fire", M_fire);
+  json.set("M_gas", M_gas);
+  json.set("Warning_fire", getFireWarning(M_fire));
+  json.set("Warning_gas", getGasWarning(M_gas));
+  json.set("Detailed_Analysis_Fire", getDetailedFireAnalysis(t, h, mq2_Smoke, mq5_CH4, mq5_LPG, mq7_CO, M_fire));
+  json.set("Detailed_Analysis_Gas", getDetailedGasAnalysis(mq5_CH4, mq5_LPG, mq7_CO, M_gas));
+  json.set("Mode", mode ? "Manual" : "Auto");
+  json.set("Relay1", digitalRead(RELAY1) ? "ON" : "OFF");
+  json.set("Relay2", digitalRead(RELAY2) ? "ON" : "OFF");
+  json.set("Relay3", digitalRead(RELAY3) ? "ON" : "OFF");
+  json.set("Relay4", digitalRead(RELAY4) ? "ON" : "OFF");
+
+  if (Firebase.RTDB.updateNode(&firebaseData, "ESP32/Data", &json)) {
+    Serial.printf("Firebase updated: %s %s\n", currentDate.c_str(), currentTime.c_str());
+  } else {
+    Serial.println("Firebase error: " + firebaseData.errorReason());
+  }
+}
+
+
+/*================================= 15. KHỞI TẠO & ĐỌC CẢM BIẾN =========================*/
 void initHardware() {
   Serial.begin(115200);
   dht.begin();
-  configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  configTime(7 * 3600, 0, "pool.ntp.org");
 
-  pinMode(RELAY1, OUTPUT);
-  pinMode(RELAY2, OUTPUT);
-  pinMode(RELAY3, OUTPUT);
-  pinMode(RELAY4, OUTPUT);
-  digitalWrite(RELAY1, LOW);
-  digitalWrite(RELAY2, LOW);
-  digitalWrite(RELAY3, LOW);
-  digitalWrite(RELAY4, LOW);
+  pinMode(RELAY1, OUTPUT); pinMode(RELAY2, OUTPUT);
+  pinMode(RELAY3, OUTPUT); pinMode(RELAY4, OUTPUT);
+  digitalWrite(RELAY1, LOW); digitalWrite(RELAY2, LOW);
+  digitalWrite(RELAY3, LOW); digitalWrite(RELAY4, LOW);
 
-  pinMode(BTN_RELAY1, INPUT);
-  pinMode(BTN_RELAY2, INPUT);
-  pinMode(BTN_RELAY3, INPUT);
-  pinMode(BTN_RELAY4, INPUT);
-  pinMode(BTN_MODE, INPUT);
+  pinMode(BTN_RELAY1, INPUT_PULLUP); pinMode(BTN_RELAY2, INPUT_PULLUP);
+  pinMode(BTN_RELAY3, INPUT_PULLUP); pinMode(BTN_RELAY4, INPUT_PULLUP);
+  pinMode(BTN_MODE, INPUT_PULLUP); pinMode(BTN_RESET, INPUT_PULLUP);
+
+  pinMode(LED_WIFI_OK, OUTPUT); pinMode(LED_WIFI_LOST, OUTPUT);
+  digitalWrite(LED_WIFI_OK, LOW); digitalWrite(LED_WIFI_LOST, LOW);
 
   SPI.begin(TFT_SCLK, TFT_MISO, TFT_MOSI, TFT_CS);
   tft.init(240, 320);
   tft.setRotation(2);
   tft.invertDisplay(false);
-  tft.fillScreen(ST77XX_BLACK);
+  tft.fillScreen(COLOR_BG);
 
   analogReadResolution(12);
   analogSetPinAttenuation(MQ2_PIN, ADC_11db);
   analogSetPinAttenuation(MQ5_PIN, ADC_11db);
-  analogSetPinAttenuation(MQ9_PIN, ADC_11db);
+  analogSetPinAttenuation(MQ7_PIN, ADC_11db);
 }
 
 void initWiFi() {
-  showWiFiStatus("Waiting to Wifi", ST77XX_YELLOW);
-  WiFi.setTxPower(WIFI_POWER_19_5dBm); 
+  tft.fillScreen(COLOR_BG);
+  drawGoldenFrame();
+
+  tft.setTextSize(2);
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(20, 120);
+  tft.println("Connecting WiFi...");
+
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("WiFi Connected");
-  showWiFiStatus("Connection success", ST77XX_GREEN);
+
+  Serial.println("\nWiFi Connected");
+
+  tft.fillScreen(COLOR_BG);
+  drawGoldenFrame();
+
+  tft.setTextColor(ST77XX_GREEN);
+  tft.setCursor(20, 120);
+  tft.println("WiFi Connected");
+
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(20, 140);
+  tft.print("IP: ");
+  tft.println(WiFi.localIP());
+
   delay(1500);
-  drawUI();
   wifiConnected = true;
 }
+
 
 void initFirebase() {
   config.api_key = API_KEY;
@@ -510,283 +864,138 @@ void initFirebase() {
   Firebase.reconnectWiFi(true);
 }
 
-// ===== Hàm đọc và xử lý dữ liệu cảm biến =====
-void readSensors(float &t, float &h, float &mq2_Smoke, float &mq2_LPG, float &mq2_H2, 
-                 float &mq5_CH4, float &mq5_LPG, float &mq9_CO, float &mq9_CH4) {
+void readSensors(float &t, float &h, float &mq2_Smoke, float &mq5_CH4, float &mq5_LPG, float &mq7_CO) {
+  // Đọc cảm biến DHT
   t = dht.readTemperature();
   h = dht.readHumidity();
 
+  // Nếu lỗi thì giữ giá trị cũ hoặc đặt fallback = 0
+  static float lastT = 30.0f, lastH = 70.0f;
+  if (isnan(t)) t = lastT;
+  else lastT = t;
+
+  if (isnan(h)) h = lastH;
+  else lastH = h;
+
+  // Đọc ADC MQ
   int a2 = readADCavg(MQ2_PIN);
   int a5 = readADCavg(MQ5_PIN);
-  int a9 = readADCavg(MQ9_PIN);
+  int a7 = readADCavg(MQ7_PIN);
 
-  mq2_Smoke = MQ_ppm_fromADC(a2, R0_MQ2, m_MQ2_Smoke, b_MQ2_Smoke, 10, 10000);
-  mq2_LPG   = MQ_ppm_fromADC(a2, R0_MQ2, m_MQ2_LPG,   b_MQ2_LPG,   10, 10000);
-  mq2_H2    = MQ_ppm_fromADC(a2, R0_MQ2, m_MQ2_H2,    b_MQ2_H2,    10, 10000);
-  mq5_CH4   = MQ_ppm_fromADC(a5, R0_MQ5, m_MQ5_CH4,   b_MQ5_CH4,   10, 10000);
-  mq5_LPG   = MQ_ppm_fromADC(a5, R0_MQ5, m_MQ5_LPG,   b_MQ5_LPG,   10, 10000);
-  mq9_CH4   = MQ_ppm_fromADC(a9, R0_MQ9, m_MQ9_CH4,   b_MQ9_CH4,   10, 10000);
-  mq9_CO    = MQ_ppm_fromADC(a9, R0_MQ9, m_MQ9_CO,    b_MQ9_CO,    10, 1000);
-
-  Serial.println("===== SENSOR DATA =====");
-  Serial.printf("DHT22: Temp=%.1f C  Hum=%.1f %%\n", t, h);
-  Serial.printf("MQ2 Smoke=%.1f ppm, LPG=%.1f ppm, H2=%.1f ppm\n", mq2_Smoke, mq2_LPG, mq2_H2);
-  Serial.printf("MQ5 CH4=%.1f ppm, LPG=%.1f ppm\n", mq5_CH4, mq5_LPG);
-  Serial.printf("MQ9 CO=%.1f ppm, CH4=%.1f ppm\n", mq9_CO, mq9_CH4);
-  Serial.println("========================");
-}
-
-// ===== Hàm tính toán mức nguy cơ bằng M ngưỡng =====
-void calculateRisk(float t, float mq2_Smoke, float mq2_LPG, float mq5_CH4, float mq5_LPG, 
-                   float mq9_CO, float mq9_CH4, float &M_fire, float &M_gas, float &M_khoi) {
-                  
-  //Ngưỡng cháy : Nhiệt độ DHT 35% + MQ2 khói 20% + MQ9 CO 30% + ( LPG+CH4) 5%
-  M_fire = 0.35f  * (t / 80.0f * 100.0f)            
-         + 0.30f  * (mq2_Smoke / 10000.0f * 100.0f)
-         + 0.30f  * (mq9_CO / 1000.0f * 100.0f)
-         + 0.025f * (mq2_LPG / 10000.0f * 100.0f)
-         + 0.025f * (mq5_CH4 / 10000.0f * 100.0f);
-  M_fire = constrain(M_fire, 0.0f, 100.0f);
-
-  //Ngưỡng gas : MQ5 (CH4+LPG) 60% + MQ2 LPG 25% + MQ9 CH4 15%
-  M_gas = 0.40f * (mq5_CH4 / 10000.0f * 100.0f)
-        + 0.20f * (mq5_LPG / 10000.0f * 100.0f)
-        + 0.25f * (mq2_LPG / 10000.0f * 100.0f)
-        + 0.15f * (mq9_CH4 / 10000.0f * 100.0f);
-  M_gas = constrain(M_gas, 0.0f, 100.0f);
-
-  //Ngưỡng khói : MQ2 Smoke 100%
-  M_khoi = (mq2_Smoke / 10000.0f) * 100.0f;
-  M_khoi = constrain(M_khoi, 0.0f, 100.0f);
-}
-
-// ===== Hàm cập nhật giao diện TFT =====
-void updateTFT(float t, float h, float mq2_Smoke, float mq2_LPG, float mq2_H2, 
-               float mq5_CH4, float mq5_LPG, float mq9_CO, float mq9_CH4, 
-               String warning) {
-  static float lastTemp=-1000, lastHum=-1000;
-  static float lastSmoke=-1, lastLPG2=-1, lastH2=-1;
-  static float lastCH4_5=-1, lastLPG5=-1, lastCO9=-1, lastCH4_9=-1;
-  static String lastWarning="", lastDatetime="", lastModeStr="";
-  static int lastRelayState[4] = {-1,-1,-1,-1};
-
-  int y = yBase;
-
-  updateText(xVal, y, getDateTimeString(), lastDatetime, ST77XX_WHITE); y += lineHeight;
-  updateText(xVal, y, mode ? "Manual" : "Auto", lastModeStr, ST77XX_YELLOW); y += lineHeight;
-  updateValue(xVal, y, t, lastTemp, "%.1f C", ST77XX_RED); y += lineHeight;
-  updateValue(xVal, y, h, lastHum, "%.1f %%", ST77XX_BLUE); y += lineHeight;
-  updateValue(xVal, y, mq2_Smoke, lastSmoke, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-  updateValue(xVal, y, mq2_LPG, lastLPG2, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-  updateValue(xVal, y, mq2_H2, lastH2, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-  updateValue(xVal, y, mq5_CH4, lastCH4_5, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-  updateValue(xVal, y, mq5_LPG, lastLPG5, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-  updateValue(xVal, y, mq9_CO, lastCO9, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-  updateValue(xVal, y, mq9_CH4, lastCH4_9, "%.0f ppm", ST77XX_CYAN); y += lineHeight;
-
-  for (int i=0; i<4; i++) {
-    int relayPin = (i==0)?RELAY1:(i==1)?RELAY2:(i==2)?RELAY3:RELAY4;
-    int state = digitalRead(relayPin);
-    if (state != lastRelayState[i]) {
-      tft.fillRect(xVal, y, 100, 15, ST77XX_BLACK);
-      tft.setCursor(xVal, y);
-      tft.setTextColor(state ? ST77XX_GREEN : ST77XX_RED, ST77XX_BLACK);
-      tft.print(state ? "ON" : "OFF");
-      lastRelayState[i] = state;
-    }
-    y += lineHeight;
-  }
-
-  uint16_t warnColor = ST77XX_GREEN;
-  if (warning.indexOf("Khan Cap") >= 0 || warning.indexOf("Nguy Hiem") >= 0) warnColor = ST77XX_RED;
-  else if (warning.indexOf("Theo Doi") >= 0) warnColor = ST77XX_YELLOW;
-  updateText(xVal, y, warning, lastWarning, warnColor);
-}
-
-// ===== Hàm đồng bộ từ Firebase =====
-void syncFirebaseModeAndRelays() {
-  if (!Firebase.ready()) return;
-
-  if (Firebase.RTDB.getString(&firebaseData, "users/0776707441/123456/ESP32/Device/Mode")) {
-    String fbMode = firebaseData.stringData();
-    int newMode = (fbMode == "Manual") ? 1 : 0;
-    if (newMode != mode) {
-      mode = newMode;
-      Serial.printf("Firebase cập nhật chế độ: %s\n", mode ? "MANUAL" : "AUTO");
-      relay1State = relay2State = relay3State = relay4State = false;
-      digitalWrite(RELAY1, LOW);
-      digitalWrite(RELAY2, LOW);
-      digitalWrite(RELAY3, LOW);
-      digitalWrite(RELAY4, LOW);
-    }
-  }
-
-  if (mode == 1) {
-    if (Firebase.RTDB.getString(&firebaseData, "users/0776707441/123456/ESP32/Device/Relay1")) {
-      String val = firebaseData.stringData();
-      if (val != fbRelay1) {
-        relay1State = (val == "ON");
-        digitalWrite(RELAY1, relay1State ? HIGH : LOW);
-        fbRelay1 = val;
-        Serial.println("Web → Relay1: " + val);
-      }
-    }
-    if (Firebase.RTDB.getString(&firebaseData, "users/0776707441/123456/ESP32/Device/Relay2")) {
-      String val = firebaseData.stringData();
-      if (val != fbRelay2) {
-        relay2State = (val == "ON");
-        digitalWrite(RELAY2, relay2State ? HIGH : LOW);
-        fbRelay2 = val;
-        Serial.println("Web → Relay2: " + val);
-      }
-    }
-    if (Firebase.RTDB.getString(&firebaseData, "users/0776707441/123456/ESP32/Device/Relay3")) {
-      String val = firebaseData.stringData();
-      if (val != fbRelay3) {
-        relay3State = (val == "ON");
-        digitalWrite(RELAY3, relay3State ? HIGH : LOW);
-        fbRelay3 = val;
-        Serial.println("Web → Relay3: " + val);
-      }
-    }
-    if (Firebase.RTDB.getString(&firebaseData, "users/0776707441/123456/ESP32/Device/Relay4")) {
-      String val = firebaseData.stringData();
-      if (val != fbRelay4) {
-        relay4State = (val == "ON");
-        digitalWrite(RELAY4, relay4State ? HIGH : LOW);
-        fbRelay4 = val;
-        Serial.println("Web → Relay4: " + val);
-      }
-    }
-  }
-}
-
-void syncThresholdsFromFirebase() {
-  if (!Firebase.ready()) return;
-  if (Firebase.RTDB.getJSON(&firebaseData, "users/0776707441/123456/ESP32/Threshold")) {
-    FirebaseJson &json = firebaseData.jsonObject();
-    size_t len = json.iteratorBegin();
-    for (size_t i = 0; i < len; i++) {
-      String key, value;
-      int type;
-      json.iteratorGet(i, type, key, value);
-
-      if (key.startsWith("fire")) {
-        int idx = key.substring(4).toInt();
-        if (idx >= 1 && idx <= 4) thresh_fire[idx] = value.toInt();
-      } else if (key.startsWith("khoi")) {
-        int idx = key.substring(4).toInt();
-        if (idx >= 1 && idx <= 4) thresh_khoi[idx] = value.toInt();
-      } else if (key.startsWith("gas")) {
-        int idx = key.substring(3).toInt();
-        if (idx >= 1 && idx <= 4) thresh_gas[idx] = value.toInt();
-      }
-    }
-    json.iteratorEnd();
-    Serial.println(" Đã cập nhật Threshold từ Firebase");
-  }
+  mq2_Smoke = safeFloat(MQ_ppm_fromADC(a2, R0_MQ2, m_MQ2_Smoke, b_MQ2_Smoke, 10, 1000));
+  mq5_CH4   = safeFloat(MQ_ppm_fromADC(a5, R0_MQ5, m_MQ5_CH4,   b_MQ5_CH4,   10, 3000));
+  mq5_LPG   = safeFloat(MQ_ppm_fromADC(a5, R0_MQ5, m_MQ5_LPG,   b_MQ5_LPG,   10, 2000));
+  mq7_CO    = safeFloat(MQ_ppm_fromADC(a7, R0_MQ7, m_MQ7_CO,    b_MQ7_CO,    1, 400));
 }
 
 
-// ===== Hàm gửi dữ liệu lên Firebase =====
-void sendToFirebase(float t, float h, float mq2_Smoke, float mq2_LPG, float mq2_H2, 
-                    float mq5_CH4, float mq5_LPG, float mq9_CO, float mq9_CH4, 
-                    float M_fire, float M_gas, float M_khoi, String warning, String title) {
-  json.clear();
-  json.set("temperature", t);
-  json.set("humidity", h);
-  json.set("mq2_Smoke", mq2_Smoke);
-  json.set("mq2_LPG", mq2_LPG);
-  json.set("mq2_H2", mq2_H2);
-  json.set("mq5_LPG", mq5_LPG);
-  json.set("mq5_CH4", mq5_CH4);
-  json.set("mq9_CO", mq9_CO);
-  json.set("mq9_CH4", mq9_CH4);
-  json.set("M_fire", M_fire);
-  json.set("M_gas", M_gas);
-  json.set("M_khoi", M_khoi);
-  json.set("warning", warning);
-  json.set("title", title);
-  json.set("Mode", mode ? "Manual" : "Auto");
-  json.set("Relay1", digitalRead(RELAY1) ? "ON" : "OFF");
-  json.set("Relay2", digitalRead(RELAY2) ? "ON" : "OFF");
-  json.set("Relay3", digitalRead(RELAY3) ? "ON" : "OFF");
-  json.set("Relay4", digitalRead(RELAY4) ? "ON" : "OFF");
-
-  String path = "users/0776707441/123456/ESP32/Data";
-  if (!Firebase.RTDB.setJSON(&firebaseData, path.c_str(), &json)) {
-    Serial.println("Firebase error: " + firebaseData.errorReason());
-  } else {
-    Serial.println("Firebase update OK");
-  }
-}
 
 
+/*===================================== 16. SETUP & LOOP ===============================*/
 void setup() {
   initHardware();
   initWiFi();
   initFirebase();
+
+  // Xóa màn hình và vẽ khung viền vàng
+  tft.fillScreen(COLOR_BG);
+  drawGoldenFrame();
+
+  // Hiển thị thông báo Warm-up lên TFT
+  tft.setTextSize(2);
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.setCursor(20, 120);
+  tft.println("System Warm-up");
+
+  tft.setTextSize(2);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(20, 140);
+  tft.println("Please wait 10s...");
+
   Serial.println("Warm-up 10s...");
-  delay(10000);
+  delay(5000);
+
+  //Sau 10s thì xóa màn hình và hiển thị dữ liệu
+  drawStaticUI();
 }
+
 
 void loop() {
   unsigned long now = millis();
-
-  // Xử lý nút nhấn
   handleButtons();
 
-  // Kiểm tra WiFi
-  if (WiFi.status() != WL_CONNECTED) {
+  // === 1. Kiểm tra trạng thái WiFi ===
+  bool wifiOK = (WiFi.status() == WL_CONNECTED);
+
+  // Nếu mất WiFi → hiển thị thông báo và nhấp nháy LED
+  if (!wifiOK) {
     if (wifiConnected) {
-      showWiFiStatus("Error WiFi", ST77XX_RED);
+      // Hiển thị "WiFi Lost" chỉ 1 lần
+      tft.fillRect(10, 45, 220, 25, ST77XX_BLACK);
+      drawDoubleBorder(10, 45, 220, 25, ST77XX_RED, ST77XX_RED, 5);
+      tft.setTextSize(2); tft.setTextColor(ST77XX_RED);
+      tft.setCursor(20, 120);
+      tft.println("WiFi Lost! (Offline Mode)");
       wifiConnected = false;
-      digitalWrite(RELAY1, LOW);
-      digitalWrite(RELAY2, LOW);
-      digitalWrite(RELAY3, LOW);
-      digitalWrite(RELAY4, LOW);
     }
-    return;
-  } else if (!wifiConnected) {
-    showWiFiStatus("Connection success", ST77XX_GREEN);
-    delay(1500);
-    drawUI();
-    wifiConnected = true;
+
+    // LED báo WiFi mất kết nối (nhấp nháy 0.5s)
+    static unsigned long lastBlink = 0;
+    static bool blinkState = false;
+    if (millis() - lastBlink >= 500) {
+      blinkState = !blinkState;
+      digitalWrite(LED_WIFI_OK, LOW);
+      digitalWrite(LED_WIFI_LOST, blinkState);
+      lastBlink = millis();
+    }
+
+    // === 2. Tự động thử kết nối lại WiFi mỗi 10 giây ===
+    static unsigned long lastRetry = 0;
+    if (millis() - lastRetry >= 10000) {
+      Serial.println("[WiFi] Mất kết nối, đang thử lại");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);  
+      lastRetry = millis();
+    }
+  } 
+  else {
+    // === 3. Khi WiFi trở lại ===
+    if (!wifiConnected) {
+      tft.fillRect(10, 45, 220, 25, ST77XX_BLACK);
+      drawDoubleBorder(10, 45, 220, 25, ST77XX_GREEN, ST77XX_GREEN, 5);
+      tft.setTextSize(2); tft.setTextColor(ST77XX_GREEN);
+      tft.setCursor(20, 120);
+      tft.println("WiFi Connected!");
+      delay(1000);
+      wifiConnected = true;
+    }
+    digitalWrite(LED_WIFI_OK, HIGH);
+    digitalWrite(LED_WIFI_LOST, LOW);
   }
 
-  // Đọc cảm biến và cập nhật mỗi 3 giây
+  // === 4. Xử lý cảm biến & cảnh báo bình thường (kể cả khi mất WiFi) ===
   if (now - lastSensorRead >= 3000) {
     lastSensorRead = now;
 
-    float t, h, mq2_Smoke, mq2_LPG, mq2_H2, mq5_CH4, mq5_LPG, mq9_CO, mq9_CH4;
-    readSensors(t, h, mq2_Smoke, mq2_LPG, mq2_H2, mq5_CH4, mq5_LPG, mq9_CO, mq9_CH4);
+    readSensors(t, h, smoke, ch4, lpg, co);
+    calculateRisk(t, h, smoke, ch4, lpg, co, M_fire, M_gas);
 
-    float M_fire, M_gas, M_khoi;
-    calculateRisk(t, mq2_Smoke, mq2_LPG, mq5_CH4, mq5_LPG, mq9_CO, mq9_CH4, M_fire, M_gas, M_khoi);
+    if (mode == 0) controlRelays(M_fire, M_gas);
+    updateTFT(t, h, smoke, ch4, lpg, co, M_fire, M_gas);
 
-    String warning, title;
-    getWarningAndTitle(M_fire, M_gas, M_khoi, warning, title);
-
-    if (mode == 0) {
-      controlRelays(warning);
+    // === 5. Gửi dữ liệu Firebase nếu WiFi OK ===
+    if (wifiOK && Firebase.ready() && now - lastFirebaseSend >= 5000) {
+      sendToFirebase(t, h, smoke, ch4, lpg, co, M_fire, M_gas);
+      lastFirebaseSend = now;
     }
 
-    updateTFT(t, h, mq2_Smoke, mq2_LPG, mq2_H2, mq5_CH4, mq5_LPG, mq9_CO, mq9_CH4, warning);
-    syncFirebaseModeAndRelays();
-
-    // Đọc và cập nhật ngưỡng mỗi 10 giây
-    if (now - lastThresholdSync >= 10000) { 
-          syncThresholdsFromFirebase();
-          lastThresholdSync = now;
-        }
-    
-    //Cập nhật dữ liệu lên Firebase mỗi 3 giây
-    if (now - lastFirebaseSend >= 3000) {
-      lastFirebaseSend = now;
-      if (Firebase.ready()) {
-        sendToFirebase(t, h, mq2_Smoke, mq2_LPG, mq2_H2, mq5_CH4, mq5_LPG, mq9_CO, mq9_CH4, 
-                       M_fire, M_gas, M_khoi, warning, title);
-      }
+    // === 6. Đồng bộ ngưỡng và chế độ mỗi 15 giây (chỉ khi có mạng) ===
+    if (wifiOK && Firebase.ready() && now - lastThresholdSync >= 15000) {
+      syncFireWeightsFromFirebase();   
+      syncGasWeightsFromFirebase();  
+      syncLevelFromFirebase();  
+      syncFirebaseModeAndRelays();
+      lastThresholdSync = now;
     }
   }
 }
