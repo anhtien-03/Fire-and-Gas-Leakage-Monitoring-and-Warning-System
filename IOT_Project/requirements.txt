@@ -1,0 +1,13 @@
+# Xử lý dữ liệu
+pandas
+numpy
+scikit-learn
+joblib
+# Deep Learning
+tensorflow
+# Vẽ biểu đồ
+matplotlib
+# Firebase Admin SDK
+firebase-admin
+# Khác
+protobuf

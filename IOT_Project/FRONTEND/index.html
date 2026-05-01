@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Giám sát cháy/gas – SPA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    .chart-container { width: 100%; height: 320px; }
+    .nav-active { background-color: rgb(55 65 81); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Nav (SPA) -->
+  <nav class="bg-gray-800 text-white p-4 w-full">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="text-xl font-bold">Menu</div>
+      <div id="spa-nav" class="flex flex-wrap gap-1">
+        <a href="#/realtime" class="px-4 py-2 rounded-md transition duration-300 hover:bg-gray-700">Realtime</a>
+        <a href="#/history"  class="px-4 py-2 rounded-md transition duration-300 hover:bg-gray-700">Xem Lịch Sử</a>
+        <a href="#/download" class="px-4 py-2 rounded-md transition duration-300 hover:bg-gray-700">Tải Lịch Sử</a>
+        <a href="#/ml"       class="px-4 py-2 rounded-md transition duration-300 hover:bg-gray-700">Machine Learning</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 container mx-auto p-4 md:p-8">
+    <div class="bg-white rounded-xl shadow-xl p-6 md:p-8">
+      <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Hệ thống giám sát cảnh báo cháy & rò rỉ khí gas</h1>
+      <p class="text-gray-600 mb-6">SPA – điều hướng không tải lại trang để giữ kết nối dữ liệu realtime.</p>
+
+      <!-- ================= RERealtime ================= -->
+      <section id="view-realtime" class="space-y-6">
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <h2 class="text-xl font-semibold text-gray-800 mb-3">Dữ liệu theo thời gian</h2>
+          <div id="rt-loading" class="text-sm inline-flex items-center gap-2 text-gray-700">
+            <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Đang tải dữ liệu thời gian thực...
+          </div>
+
+          <div id="rt-data" class="hidden mt-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-left">
+              <p class="text-gray-700"><strong>Loại nguy hiểm:</strong> <span id="dangerType" class="font-semibold text-red-600">N/A</span></p>
+              <p class="text-gray-700"><strong>Cảnh báo:</strong> <span id="warning" class="font-semibold text-orange-500">N/A</span></p>
+              <p class="text-gray-700"><strong>Ngày:</strong> <span id="date" class="font-semibold text-blue-600">N/A</span></p>
+              <p class="text-gray-700"><strong>Giờ:</strong> <span id="time" class="font-semibold text-blue-600">N/A</span></p>
+              <p class="text-gray-700"><strong>Nhiệt độ:</strong> <span id="temperature" class="font-semibold text-purple-600">N/A</span> °C</p>
+              <p class="text-gray-700"><strong>Độ ẩm:</strong> <span id="humidity" class="font-semibold text-green-600">N/A</span> %</p>
+              <p class="text-gray-700"><strong>MQ2 (Khí dễ cháy):</strong> <span id="mq2" class="font-semibold text-gray-800">N/A</span></p>
+              <p class="text-gray-700"><strong>MQ5 (LPG/Ga tự nhiên):</strong> <span id="mq5" class="font-semibold text-gray-800">N/A</span></p>
+              <p class="text-gray-700"><strong>MQ9 (CO/Khí dễ cháy):</strong> <span id="mq9" class="font-semibold text-gray-800">N/A</span></p>
+              <p class="text-gray-700"><strong>Ngọn lửa:</strong> <span id="flame" class="font-semibold text-red-600">N/A</span></p>
+              <p class="text-gray-700"><strong>M Gas:</strong> <span id="M_gas" class="font-semibold text-gray-800">N/A</span></p>
+              <p class="text-gray-700"><strong>M Fire:</strong> <span id="M_fire" class="font-semibold text-gray-800">N/A</span></p>
+            </div>
+            <p class="text-xs text-gray-500 mt-4">Dữ liệu được cập nhật theo thời gian thực từ Firebase.</p>
+          </div>
+        </div>
+
+        <h2 class="text-2xl font-semibold text-gray-800">Biểu đồ thời gian thực</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">Nhiệt độ (°C)</h3><div class="chart-container"><canvas id="rtTemp"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">Độ ẩm (%)</h3><div class="chart-container"><canvas id="rtHum"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">MQ2</h3><div class="chart-container"><canvas id="rtMq2"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">MQ5</h3><div class="chart-container"><canvas id="rtMq5"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">MQ9</h3><div class="chart-container"><canvas id="rtMq9"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">Ngọn lửa (0/1)</h3><div class="chart-container"><canvas id="rtFlame"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">M Gas</h3><div class="chart-container"><canvas id="rtMgas"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">M Fire</h3><div class="chart-container"><canvas id="rtMfire"></canvas></div></div>
+        </div>
+      </section>
+      <!-- ================= /RERealtime ================= -->
+
+      <!-- ================= HISTORY ================= -->
+      <section id="view-history" class="hidden space-y-4">
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <h2 class="text-2xl font-semibold text-gray-800 mb-2">Xem lịch sử cảm biến</h2>
+          <p class="text-gray-600 mb-4">Chọn khoảng ngày để tải dữ liệu lịch sử từ API backend (MySQL).</p>
+          <div class="flex flex-col sm:flex-row items-center gap-4">
+            <div class="flex items-center gap-2">
+              <label for="hStart" class="font-semibold text-gray-700">Ngày bắt đầu</label>
+              <input type="date" id="hStart" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div class="flex items-center gap-2">
+              <label for="hEnd" class="font-semibold text-gray-700">Ngày kết thúc</label>
+              <input type="date" id="hEnd" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <button id="hBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow transition duration-200">Tìm kiếm</button>
+          </div>
+          <div id="hLoading" class="mt-3 hidden text-sm inline-flex items-center gap-2 text-gray-700">
+            <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Đang tải lịch sử...
+          </div>
+          <div id="hError" class="mt-3 hidden text-sm text-red-600"></div>
+        </div>
+
+        <!-- === DASHBOARD (tóm tắt History) === -->
+        <div id="hDashboard" class="hidden space-y-4">
+          <!-- KPI cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Số bản ghi</div>
+              <div id="kpi_count" class="text-2xl font-bold text-gray-800">0</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Khoảng thời gian</div>
+              <div id="kpi_range" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Nhiệt độ (TB / Max)</div>
+              <div id="kpi_temp" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+               <div class="text-sm text-gray-500">Độ ẩm (TB / Max)</div>
+               <div id="kpi_hum" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+                <div class="text-sm text-gray-500">MQ2 (TB / Max)</div>
+                <div id="kpi_mq2" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+                 <div class="text-sm text-gray-500">MQ5 (TB / Max)</div>
+                 <div id="kpi_mq5" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+                <div class="text-sm text-gray-500">MQ9 (TB / Max)</div>
+                <div id="kpi_mq9" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+                <div class="text-sm text-gray-500">M_gas (TB / Max)</div>
+                <div id="kpi_mgas" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">M_fire (TB / Max)</div>
+              <div id="kpi_mfire" class="text-base font-semibold text-gray-800">—</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Flame = 1</div>
+              <div id="kpi_flame" class="text-2xl font-bold text-red-600">0</div>
+            </div>
+          </div>
+
+          <!-- Biểu đồ tổng hợp multi-axis -->
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">Tổng hợp Temp/Hum & MQ (multi-axis)</h3>
+            <div class="chart-container"><canvas id="hMixed"></canvas></div>
+          </div>
+
+          <!-- Histogram -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố Nhiệt độ</h3>
+              <div class="chart-container"><canvas id="hHistTemp"></canvas></div>
+            </div>
+            <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố Độ ẩm</h3>
+              <div class="chart-container"><canvas id="hHistHum"></canvas></div>
+            </div>
+              <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố MQ2</h3>
+            <div class="chart-container"><canvas id="hHistMq2"></canvas></div>
+            </div>
+              <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố MQ5</h3>
+            <div class="chart-container"><canvas id="hHistMq5"></canvas></div>
+            </div>
+              <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố MQ9</h3>
+            <div class="chart-container"><canvas id="hHistMq9"></canvas></div>
+            </div>
+              <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố M Gas</h3>
+            <div class="chart-container"><canvas id="hHistMgas"></canvas></div>
+            </div>
+              <div class="bg-gray-50 p-4 rounded-lg border">
+              <h3 class="font-semibold mb-2">Phân bố M Fire</h3>
+           <div class="chart-container"><canvas id="hHistMfire"></canvas></div>
+           </div>
+             <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">Phân bố Flame (0/1)</h3>
+           <div class="chart-container"><canvas id="hHistFlame"></canvas></div>
+         </div>
+          </div>
+        </div>
+        <!-- === /DASHBOARD === -->
+
+        <div id="hCharts" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">Nhiệt độ (°C)</h3><div class="chart-container"><canvas id="hTemp"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">Độ ẩm (%)</h3><div class="chart-container"><canvas id="hHum"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">MQ2</h3><div class="chart-container"><canvas id="hMq2"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">MQ5</h3><div class="chart-container"><canvas id="hMq5"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">MQ9</h3><div class="chart-container"><canvas id="hMq9"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">Ngọn lửa (0/1)</h3><div class="chart-container"><canvas id="hFlame"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">M Gas</h3><div class="chart-container"><canvas id="hMgas"></canvas></div></div>
+          <div class="bg-gray-50 p-4 rounded-lg border"><h3 class="font-semibold mb-2">M Fire</h3><div class="chart-container"><canvas id="hMfire"></canvas></div></div>
+        </div>
+        <p id="hNoData" class="text-gray-500 p-4 hidden">Không có dữ liệu lịch sử cho khoảng ngày đã chọn.</p>
+      </section>
+      <!-- ================= /HISTORY ================= -->
+
+      <!-- ================= DOWNLOAD ================= -->
+      <section id="view-download" class="hidden space-y-4">
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <h2 class="text-2xl font-semibold text-gray-800 mb-2">Tải lịch sử cảm biến</h2>
+          <p class="text-gray-600 mb-4">Chọn khoảng ngày để tải dữ liệu lịch sử về file CSV từ API backend.</p>
+          <div class="flex flex-col sm:flex-row items-center gap-4">
+            <div class="flex items-center gap-2">
+              <label for="dStart" class="font-semibold text-gray-700">Ngày bắt đầu</label>
+              <input type="date" id="dStart" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div class="flex items-center gap-2">
+              <label for="dEnd" class="font-semibold text-gray-700">Ngày kết thúc</label>
+              <input type="date" id="dEnd" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <button id="dBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md shadow transition duration-200">Tải CSV</button>
+          </div>
+          <p id="dError" class="mt-3 hidden text-sm text-red-600"></p>
+        </div>
+      </section>
+      <!-- ================= /DOWNLOAD ================= -->
+
+      <!-- ================= MACHINE LEARNING ================= -->
+      <section id="view-ml" class="hidden space-y-6">
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <h2 class="text-2xl font-semibold text-gray-800 mb-2">Machine Learning</h2>
+          <p class="text-gray-600">Trạng thái ML lấy từ cùng node Firebase.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">Nhiệt độ (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlTemp"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">Độ ẩm (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlHum"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">MQ2 (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlMq2"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">MQ5 (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlMq5"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">MQ9 (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlMq9"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">Flame (0/1 – Realtime)</h3>
+            <div class="chart-container"><canvas id="mlFlame"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">M Gas (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlMgas"></canvas></div>
+          </div>
+          <div class="bg-gray-50 p-4 rounded-lg border">
+            <h3 class="font-semibold mb-2">M Fire (Realtime)</h3>
+            <div class="chart-container"><canvas id="mlMfire"></canvas></div>
+          </div>
+        </div>
+
+        <div class="p-4 rounded-lg border bg-gray-50">
+          <h3 class="text-xl font-semibold mb-4">Trạng thái Machine Learning</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Lần kiểm tra gần nhất</div>
+              <div id="ml_last_check" class="text-lg font-semibold text-gray-800">N/A</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Khung giờ chạy (ml_hour)</div>
+              <div id="ml_hour" class="text-lg font-semibold text-gray-800">N/A</div>
+            </div>
+            <div class="p-4 bg-white rounded-lg border">
+              <div class="text-sm text-gray-500">Tình trạng</div>
+              <div id="ml_status_badge" class="inline-block px-2 py-1 rounded text-sm font-semibold">N/A</div>
+            </div>
+          </div>
+          <div class="p-4 bg-white rounded-lg border mb-4">
+            <div class="text-sm text-gray-500 mb-1">Ghi chú (ml_notes)</div>
+            <div id="ml_notes" class="whitespace-pre-wrap text-gray-800">N/A</div>
+          </div>
+
+          <div class="p-4 bg-white rounded-lg border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-sm text-gray-500">Bất thường hiện tại</div>
+              <div class="text-sm">Số mục bất thường: <span id="ml_anomalies_count" class="font-semibold text-red-600">0</span></div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full border border-gray-200 rounded-lg overflow-hidden">
+                <thead class="bg-gray-100">
+                  <tr class="text-left">
+                    <th class="px-3 py-2">Sensor</th>
+                    <th class="px-3 py-2">Status</th>
+                    <th class="px-3 py-2">Value</th>
+                    <th class="px-3 py-2">q10</th>
+                    <th class="px-3 py-2">q90</th>
+                    <th class="px-3 py-2">Median</th>
+                    <th class="px-3 py-2">Percentile Normal</th>
+                    <th class="px-3 py-2">Severity</th>
+                    <th class="px-3 py-2">z_mad</th>
+                  </tr>
+                </thead>
+                <tbody id="ml_anomalies_table" class="divide-y"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- ================= /MACHINE LEARNING ================= -->
+    </div>
+  </main>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+  <script>
+    // =============== COMMON: Chart helpers & Router ===============
+    Chart.register(ChartZoom);
+    const MAX_POINTS = 50;
+
+    function makeLineChart(ctx, label, color, yOptions = {}) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{
+          label, data: [], borderColor: color,
+          backgroundColor: color.replace('1)', '0.15)'),
+          borderWidth: 2, fill: true, tension: 0.2
+        }]},
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { type: 'category', title: { display: true, text: 'Thời gian' } },
+            y: { beginAtZero: false, title: { display: true, text: 'Giá trị' }, ...yOptions }
+          },
+          plugins: {
+            legend: { display: true, position: 'top' },
+            tooltip: { mode: 'index', intersect: false },
+            zoom: { pan: { enabled: true, mode: 'x' },
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+          }
+        }
+      });
+    }
+
+    function pushPoint(chart, v) {
+      if (!chart) return;
+      if (typeof v === 'undefined' || Number.isNaN(Number(v))) return;
+      const t = new Date().toLocaleTimeString('vi-VN');
+      chart.data.labels.push(t);
+      chart.data.datasets[0].data.push(Number(v));
+      if (chart.data.labels.length > MAX_POINTS) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+      chart.update();
+    }
+
+    function setActiveNav() {
+      const links = document.querySelectorAll('#spa-nav a');
+      const hash = location.hash || '#/realtime';
+      links.forEach(a => a.classList.remove('nav-active'));
+      const active = document.querySelector(`#spa-nav a[href="${hash}"]`);
+      if (active) active.classList.add('nav-active');
+    }
+
+    function router() {
+      const routes = {
+        '#/realtime': 'view-realtime',
+        '#/history':  'view-history',
+        '#/download': 'view-download',
+        '#/ml':       'view-ml'
+      };
+      const target = routes[location.hash] || 'view-realtime';
+      document.querySelectorAll('main section').forEach(s => s.classList.add('hidden'));
+      document.getElementById(target).classList.remove('hidden');
+      setActiveNav();
+    }
+    window.addEventListener('hashchange', router);
+
+    // === Dashboard helpers (History) ===
+    function numberArray(a) { return (a || []).map(v => Number(v)).filter(Number.isFinite); }
+    function avg(a){ return a.length ? a.reduce((s,v)=>s+v,0)/a.length : NaN; }
+    function maxv(a){ return a.length ? Math.max(...a) : NaN; }
+
+    function makeBarChart(ctx, label) {
+      return new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label, data: [] }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { title: { display: true, text: 'Bins' } },
+            y: { beginAtZero: true, title: { display: true, text: 'Số lượng' } }
+          },
+          plugins: { legend: { display: true } }
+        }
+      });
+    }
+
+    function buildHistogram(values, nBins = 12) {
+      const arr = numberArray(values);
+      if (!arr.length) return { labels: [], counts: [] };
+      const lo = Math.min(...arr), hi = Math.max(...arr);
+      const width = (hi - lo) / (nBins || 1) || 1;
+      const labels = [], counts = new Array(nBins).fill(0);
+      for (let i=0;i<nBins;i++) {
+        const start = lo + i*width;
+        const end = i === nBins-1 ? hi : start + width;
+        labels.push(`${start.toFixed(1)}–${end.toFixed(1)}`);
+      }
+      arr.forEach(v => {
+        let idx = Math.floor((v - lo) / width);
+        if (idx >= nBins) idx = nBins - 1;
+        if (idx < 0) idx = 0;
+        counts[idx]++;
+      });
+      return { labels, counts };
+    }
+
+    // Histogram đặc thù cho Flame (nhị phân 0/1)
+function buildBinaryHistogram(values) {
+  const arr = numberArray(values).map(v => (v >= 0.5 ? 1 : 0)); // quy về 0/1 an toàn
+  const c0 = arr.filter(v => v === 0).length;
+  const c1 = arr.filter(v => v === 1).length;
+  return { labels: ['0', '1'], counts: [c0, c1] };
+}
+
+
+    // =============== Firebase init (một lần) ===============
+const firebaseConfig = {
+  apiKey: "AIzaSyB8JK02oKE1n8Yep7QPFXaYExWGdGCqJHs",
+  authDomain: "esp32-98de6.firebaseapp.com",
+  databaseURL: "https://esp32-98de6-default-rtdb.firebaseio.com",
+  projectId: "esp32-98de6",
+  storageBucket: "esp32-98de6.firebasestorage.app",
+  messagingSenderId: "191744296388",
+  appId: "1:191744296388:web:7a1c7ae51cb611f08e1091",
+  measurementId: "G-TX0CH6K3KM"
+};
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const sensorRef = db.ref("users/0776707441/123456/ESP32");
+
+    // =============== Realtime charts (giữ kết nối khi đổi tab) ===============
+    let rtTemp, rtHum, rtMq2, rtMq5, rtMq9, rtFlame, rtMgas, rtMfire;
+    // (fix) khai báo đủ cho ML charts
+    let mlTemp, mlHum, mlMq2, mlMq5, mlMq9, mlFlame, mlMgas, mlMfire;
+
+    // History charts
+    let hTemp, hHum, hMq2, hMq5, hMq9, hFlame, hMgas, hMfire;
+ 
+    // History dashboard charts
+    let hMixed, hHistTemp, hHistHum, hHistMq2, hHistMq5, hHistMq9, hHistMgas, hHistMfire, hHistFlame;
+
+
+    function setupRealtimeCharts() {
+      rtTemp  = makeLineChart(document.getElementById('rtTemp').getContext('2d'),  'Nhiệt độ (°C)', 'rgba(255, 99, 132, 1)');
+      rtHum   = makeLineChart(document.getElementById('rtHum').getContext('2d'),   'Độ ẩm (%)',     'rgba(54, 162, 235, 1)');
+      rtMq2   = makeLineChart(document.getElementById('rtMq2').getContext('2d'),   'MQ2',           'rgba(75, 192, 192, 1)');
+      rtMq5   = makeLineChart(document.getElementById('rtMq5').getContext('2d'),   'MQ5',           'rgba(153, 102, 255, 1)');
+      rtMq9   = makeLineChart(document.getElementById('rtMq9').getContext('2d'),   'MQ9',           'rgba(255, 159, 64, 1)');
+      rtFlame = makeLineChart(document.getElementById('rtFlame').getContext('2d'), 'Ngọn lửa (0/1)','rgba(201, 203, 207, 1)', { suggestedMin: -0.1, suggestedMax: 1.1 });
+      rtMgas  = makeLineChart(document.getElementById('rtMgas').getContext('2d'),  'M Gas',         'rgba(255, 206, 86, 1)');
+      rtMfire = makeLineChart(document.getElementById('rtMfire').getContext('2d'), 'M Fire',        'rgba(255, 99, 71, 1)');
+
+      // ML charts
+      mlTemp  = makeLineChart(document.getElementById('mlTemp').getContext('2d'),  'Nhiệt độ (°C)', 'rgba(255, 99, 132, 1)');
+      mlHum   = makeLineChart(document.getElementById('mlHum').getContext('2d'),   'Độ ẩm (%)',     'rgba(54, 162, 235, 1)');
+      mlMq2   = makeLineChart(document.getElementById('mlMq2').getContext('2d'),   'MQ2',           'rgba(75, 192, 192, 1)');
+      mlMq5   = makeLineChart(document.getElementById('mlMq5').getContext('2d'),   'MQ5',           'rgba(153, 102, 255, 1)');
+      mlMq9   = makeLineChart(document.getElementById('mlMq9').getContext('2d'),   'MQ9',           'rgba(255, 159, 64, 1)');
+      mlFlame = makeLineChart(document.getElementById('mlFlame').getContext('2d'), 'Flame (0/1)',   'rgba(201, 203, 207, 1)', { suggestedMin: -0.1, suggestedMax: 1.1 });
+      mlMgas  = makeLineChart(document.getElementById('mlMgas').getContext('2d'),  'M Gas',         'rgba(255, 206, 86, 1)');
+      mlMfire = makeLineChart(document.getElementById('mlMfire').getContext('2d'), 'M Fire',        'rgba(255, 99, 71, 1)');
+    }
+
+    // =============== ML helpers ===============
+    function setMlStatusBadge(text) {
+      const el = document.getElementById('ml_status_badge');
+      el.textContent = text ?? 'N/A';
+      el.className = 'inline-block px-2 py-1 rounded text-sm font-semibold';
+      const v = (text || '').toString().trim().toLowerCase();
+      const okSet = ['ok','normal','ready','active','running','bình thường','binh thuong'];
+      const warnSet = ['warning','caution','degraded','cảnh báo','canh bao'];
+      const criticalSet = ['alert','error','anomaly','critical','failed','khẩn cấp','khan cap','khẩn cấp!'];
+      if (okSet.includes(v)) el.classList.add('bg-green-100','text-green-700','border','border-green-200');
+      else if (warnSet.includes(v)) el.classList.add('bg-yellow-100','text-yellow-700','border','border-yellow-200');
+      else if (criticalSet.includes(v)) el.classList.add('bg-red-100','text-red-700','border','border-red-200');
+      else el.classList.add('bg-gray-100','text-gray-700','border','border-gray-200');
+    }
+
+    const SENSOR_ORDER  = ["Temp","Humidity","Mq2","Mq5","Mq9","M_gas","M_fire"];
+    const SENSOR_LABELS = { Temp:"Nhiệt độ", Humidity:"Độ ẩm", Mq2:"MQ2", Mq5:"MQ5", Mq9:"MQ9", M_gas:"M Gas", M_fire:"M Fire" };
+    const fmt = (x) => (typeof x === 'number' ? x.toFixed(3) : (x ?? 'N/A'));
+
+    function renderAnomaliesTable(anomsObj) {
+      const tbody = document.getElementById('ml_anomalies_table');
+      tbody.innerHTML = '';
+      if (!anomsObj || typeof anomsObj !== 'object') {
+        document.getElementById('ml_anomalies_count').textContent = '0';
+        return;
+      }
+      let rows = Object.entries(anomsObj);
+      rows.sort((a,b) => {
+        const aAb = (a[1]?.status||'').toLowerCase().trim() !== 'normal' ? 1:0;
+        const bAb = (b[1]?.status||'').toLowerCase().trim() !== 'normal' ? 1:0;
+        if (aAb !== bAb) return bAb - aAb;
+        const ia = SENSOR_ORDER.indexOf(a[0]), ib = SENSOR_ORDER.indexOf(b[0]);
+        if (ia!==-1 && ib!==-1) return ia-ib;
+        if (ia!==-1) return -1; if (ib!==-1) return 1;
+        return a[0].localeCompare(b[0]);
+      });
+
+      let abnormalCount = 0;
+      rows.forEach(([key, a]) => {
+        const status = (a?.status ?? 'N/A').toString();
+        const vStatus = status.toLowerCase().trim();
+        const isAbnormal = vStatus !== 'normal';
+        if (isAbnormal) abnormalCount++;
+
+        const tr = document.createElement('tr');
+        tr.className = 'bg-white hover:bg-gray-50';
+        if (isAbnormal) tr.classList.add('bg-red-50');
+
+        const mk = (text) => { const td=document.createElement('td'); td.className='px-3 py-2'; td.textContent=text; return td; };
+
+        const statusTd = document.createElement('td');
+        statusTd.className = 'px-3 py-2';
+        const badge = document.createElement('span');
+        badge.textContent = status || 'N/A';
+        badge.className = 'inline-block px-2 py-0.5 rounded text-xs font-semibold';
+        const okSet = ['ok','normal','ready','active','running','bình thường','binh thuong'];
+        const warnSet = ['warning','caution','degraded','cảnh báo','canh bao'];
+        const criticalSet = ['alert','error','anomaly','critical','failed','khẩn cấp','khan cap','khẩn cấp!'];
+        if (okSet.includes(vStatus)) badge.classList.add('bg-green-100','text-green-700','border','border-green-200');
+        else if (warnSet.includes(vStatus)) badge.classList.add('bg-yellow-100','text-yellow-700','border','border-yellow-200');
+        else if (criticalSet.includes(vStatus)) badge.classList.add('bg-red-100','text-red-700','border','border-red-200');
+        else badge.classList.add('bg-gray-100','text-gray-700','border','border-gray-200');
+        statusTd.appendChild(badge);
+
+        tr.appendChild(mk(SENSOR_LABELS[key] ?? key));
+        tr.appendChild(statusTd);
+        tr.appendChild(mk(fmt(a?.value)));
+        tr.appendChild(mk(fmt(a?.q10)));
+        tr.appendChild(mk(fmt(a?.q90)));
+        tr.appendChild(mk(fmt(a?.median)));
+        tr.appendChild(mk(fmt(a?.percentile_normal)));
+        tr.appendChild(mk(fmt(a?.severity)));
+        tr.appendChild(mk(fmt(a?.z_mad)));
+        tbody.appendChild(tr);
+      });
+      document.getElementById('ml_anomalies_count').textContent = String(abnormalCount);
+    }
+
+    // =============== Realtime listener ===============
+    function attachRealtimeListener() {
+      const loadingEl = document.getElementById('rt-loading');
+      const dataEl = document.getElementById('rt-data');
+
+      sensorRef.on('value', (snap) => {
+        const d = snap.val();
+        if (!d) {
+          loadingEl.textContent = "Không có dữ liệu cảm biến thời gian thực.";
+          loadingEl.classList.remove('hidden');
+          dataEl.classList.add('hidden');
+          return;
+        }
+        loadingEl.classList.add('hidden');
+        dataEl.classList.remove('hidden');
+
+        // Cards
+        document.getElementById('dangerType').textContent = d.dangerType ?? 'N/A';
+        document.getElementById('warning').textContent    = d.warning ?? 'N/A';
+        document.getElementById('date').textContent       = d.date ?? 'N/A';
+        document.getElementById('time').textContent       = d.time ?? 'N/A';
+        document.getElementById('temperature').textContent= d.temperature ?? 'N/A';
+        document.getElementById('humidity').textContent   = d.humidity ?? 'N/A';
+        document.getElementById('mq2').textContent        = d.mq2 ?? 'N/A';
+        document.getElementById('mq5').textContent        = d.mq5 ?? 'N/A';
+        document.getElementById('mq9').textContent        = d.mq9 ?? 'N/A';
+        document.getElementById('flame').textContent      = (typeof d.flame !== 'undefined') ? d.flame : 'N/A';
+        document.getElementById('M_gas').textContent      = d.M_gas ?? 'N/A';
+        document.getElementById('M_fire').textContent     = d.M_fire ?? 'N/A';
+
+        // Realtime charts
+        pushPoint(rtTemp,  d.temperature);
+        pushPoint(rtHum,   d.humidity);
+        pushPoint(rtMq2,   d.mq2);
+        pushPoint(rtMq5,   d.mq5);
+        pushPoint(rtMq9,   d.mq9);
+        pushPoint(rtFlame, d.flame);
+        pushPoint(rtMgas,  d.M_gas);
+        pushPoint(rtMfire, d.M_fire);
+
+        // ML charts (Realtime source)
+        pushPoint(mlTemp,  d.temperature);
+        pushPoint(mlHum,   d.humidity);
+        pushPoint(mlMq2,   d.mq2);
+        pushPoint(mlMq5,   d.mq5);
+        pushPoint(mlMq9,   d.mq9);
+        pushPoint(mlFlame, d.flame);
+        pushPoint(mlMgas,  d.M_gas);
+        pushPoint(mlMfire, d.M_fire);
+
+        // ML area
+        document.getElementById('ml_last_check').textContent = d?.ml_last_check ?? 'N/A';
+        document.getElementById('ml_hour').textContent       = d?.ml_hour ?? 'N/A';
+        setMlStatusBadge(d?.ml_status);
+        (function renderMlNotes(notes) {
+          const host = document.getElementById('ml_notes');
+          host.innerHTML = '';
+          if (Array.isArray(notes) && notes.length) {
+            const ul = document.createElement('ul'); ul.className='list-disc pl-5 space-y-1';
+            notes.forEach(n=>{ const li=document.createElement('li'); li.textContent=String(n); ul.appendChild(li);});
+            host.appendChild(ul);
+          } else if (typeof notes === 'string' && notes.trim()) {
+            host.textContent = notes;
+          } else { host.textContent = 'N/A'; }
+        })(d?.ml_notes);
+        renderAnomaliesTable(d?.ml_anomalies);
+      }, (err) => {
+        console.error("Firebase error:", err?.code, err?.message);
+        loadingEl.textContent = "Lỗi khi tải dữ liệu thời gian thực.";
+        loadingEl.classList.remove('hidden');
+        dataEl.classList.add('hidden');
+      });
+    }
+
+    // =============== History (fetch từ API) ===============
+    function destroyHistoryCharts() {
+      [hTemp,hHum,hMq2,hMq5,hMq9,hFlame,hMgas,hMfire].forEach(c => { if (c) c.destroy(); });
+    }
+    function destroyHistoryDashboard() {
+      [hMixed, hHistTemp, hHistHum, hHistMq2, hHistMq5, hHistMq9, hHistMgas, hHistMfire, hHistFlame]
+    .forEach(c => { if (c) c.destroy(); });
+    }
+
+    function renderHistoryDashboard(rows) {
+      const box = document.getElementById('hDashboard');
+      box.classList.remove('hidden');
+
+      const labels = rows.map(r => {
+        const d = (r.date || '').split('T')[0] || r.date || '';
+        const t = r.time || '';
+        return `${d} ${t}`.trim();
+      });
+
+     const temps = numberArray(rows.map(r => r.temperature));
+     const hums  = numberArray(rows.map(r => r.humidity));
+     const mq2   = numberArray(rows.map(r => r.mq2));
+     const mq5   = numberArray(rows.map(r => r.mq5));
+     const mq9   = numberArray(rows.map(r => r.mq9));
+     const flames= numberArray(rows.map(r => r.flame));
+     const mgas  = numberArray(rows.map(r => r.M_gas));
+     const mfire = numberArray(rows.map(r => r.M_fire));
+
+      // KPI
+      document.getElementById('kpi_count').textContent = String(rows.length);
+      const firstLabel = labels[0] || '—';
+      const lastLabel  = labels[labels.length-1] || '—';
+      document.getElementById('kpi_range').textContent = `${firstLabel} → ${lastLabel}`;
+
+      const tAvg = avg(temps), tMax = maxv(temps);
+      document.getElementById('kpi_temp').textContent =
+        (Number.isFinite(tAvg) && Number.isFinite(tMax)) ? `${tAvg.toFixed(1)}°C / ${tMax.toFixed(1)}°C` : '—';
+
+      const flameCount = flames.filter(v => v === 1).length;
+      document.getElementById('kpi_flame').textContent = String(flameCount);
+
+  // Độ ẩm (TB / Max)
+{
+  const a = avg(hums), m = maxv(hums);
+  document.getElementById('kpi_hum').textContent =
+    (Number.isFinite(a) && Number.isFinite(m)) ? `${a.toFixed(1)}% / ${m.toFixed(1)}%` : '—';
+}
+
+// MQ2 (TB / Max)
+{
+  const a = avg(mq2), m = maxv(mq2);
+  document.getElementById('kpi_mq2').textContent =
+    (Number.isFinite(a) && Number.isFinite(m)) ? `${a.toFixed(1)} / ${m.toFixed(1)}` : '—';
+}
+
+// MQ5 (TB / Max)
+{
+  const a = avg(mq5), m = maxv(mq5);
+  document.getElementById('kpi_mq5').textContent =
+    (Number.isFinite(a) && Number.isFinite(m)) ? `${a.toFixed(1)} / ${m.toFixed(1)}` : '—';
+}
+
+// MQ9 (TB / Max)
+{
+  const a = avg(mq9), m = maxv(mq9);
+  document.getElementById('kpi_mq9').textContent =
+    (Number.isFinite(a) && Number.isFinite(m)) ? `${a.toFixed(1)} / ${m.toFixed(1)}` : '—';
+}
+
+// M_gas (TB / Max)
+{
+  const a = avg(mgas), m = maxv(mgas);
+  document.getElementById('kpi_mgas').textContent =
+    (Number.isFinite(a) && Number.isFinite(m)) ? `${a.toFixed(1)} / ${m.toFixed(1)}` : '—';
+}
+
+// M_fire (TB / Max)
+{
+  const a = avg(mfire), m = maxv(mfire);
+  document.getElementById('kpi_mfire').textContent =
+    (Number.isFinite(a) && Number.isFinite(m)) ? `${a.toFixed(1)} / ${m.toFixed(1)}` : '—';
+}
+
+
+      // Hủy chart cũ
+      destroyHistoryDashboard();
+
+      // Mixed chart
+      hMixed = new Chart(document.getElementById('hMixed').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Độ ẩm (%)',    data: hums,  yAxisID: 'y', tension: 0.2, fill: false },
+            { label: 'Nhiệt độ (°C)', data: temps, yAxisID: 'y', tension: 0.2, fill: false },
+            { label: 'MQ2',           data: mq2,   yAxisID: 'y1', tension: 0.2, fill: false },
+            { label: 'MQ5',           data: mq5,   yAxisID: 'y1', tension: 0.2, fill: false },
+            { label: 'MQ9',           data: mq9,   yAxisID: 'y1', tension: 0.2, fill: false },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          stacked: false,
+          plugins: {
+            legend: { position: 'top' },
+            zoom: {
+              pan: { enabled: true, mode: 'x' },
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+            }
+          },
+          scales: {
+            y:  { type: 'linear', position: 'left',  title: { display: true, text: 'Temp/Hum' } },
+            y1: { type: 'linear', position: 'right', title: { display: true, text: 'MQ' }, grid: { drawOnChartArea: false } }
+          }
+        }
+      });
+
+      // Histogram Temp
+      const ht = buildHistogram(temps, 12);
+      hHistTemp = makeBarChart(document.getElementById('hHistTemp').getContext('2d'), 'Tần suất nhiệt độ');
+      hHistTemp.data.labels = ht.labels;
+      hHistTemp.data.datasets[0].data = ht.counts;
+      hHistTemp.update();
+
+      // Histogram Hum
+      const hh = buildHistogram(hums, 12);
+      hHistHum = makeBarChart(document.getElementById('hHistHum').getContext('2d'), 'Tần suất độ ẩm');
+      hHistHum.data.labels = hh.labels;
+      hHistHum.data.datasets[0].data = hh.counts;
+      hHistHum.update();
+
+      // Histogram MQ2
+const hq2 = buildHistogram(mq2, 12);
+hHistMq2 = makeBarChart(document.getElementById('hHistMq2').getContext('2d'), 'Tần suất MQ2');
+hHistMq2.data.labels = hq2.labels;
+hHistMq2.data.datasets[0].data = hq2.counts;
+hHistMq2.update();
+
+// Histogram MQ5
+const hq5 = buildHistogram(mq5, 12);
+hHistMq5 = makeBarChart(document.getElementById('hHistMq5').getContext('2d'), 'Tần suất MQ5');
+hHistMq5.data.labels = hq5.labels;
+hHistMq5.data.datasets[0].data = hq5.counts;
+hHistMq5.update();
+
+// Histogram MQ9
+const hq9 = buildHistogram(mq9, 12);
+hHistMq9 = makeBarChart(document.getElementById('hHistMq9').getContext('2d'), 'Tần suất MQ9');
+hHistMq9.data.labels = hq9.labels;
+hHistMq9.data.datasets[0].data = hq9.counts;
+hHistMq9.update();
+
+// Histogram M Gas
+const hmg = buildHistogram(numberArray(rows.map(r => r.M_gas)), 12);
+hHistMgas = makeBarChart(document.getElementById('hHistMgas').getContext('2d'), 'Tần suất M Gas');
+hHistMgas.data.labels = hmg.labels;
+hHistMgas.data.datasets[0].data = hmg.counts;
+hHistMgas.update();
+
+// Histogram M Fire
+const hmf = buildHistogram(numberArray(rows.map(r => r.M_fire)), 12);
+hHistMfire = makeBarChart(document.getElementById('hHistMfire').getContext('2d'), 'Tần suất M Fire');
+hHistMfire.data.labels = hmf.labels;
+hHistMfire.data.datasets[0].data = hmf.counts;
+hHistMfire.update();
+
+// Histogram Flame (0/1)
+const hfl = buildBinaryHistogram(flames);
+hHistFlame = makeBarChart(document.getElementById('hHistFlame').getContext('2d'), 'Số mẫu Flame (0/1)');
+hHistFlame.data.labels = hfl.labels;
+hHistFlame.data.datasets[0].data = hfl.counts;
+hHistFlame.update();
+
+    }
+
+    function renderHistoryCharts(rows) {
+      const labels = rows.map(r => {
+        const d = (r.date || '').split('T')[0] || r.date || '';
+        const t = r.time || '';
+        return `${d} ${t}`.trim();
+      });
+      hTemp = makeLineChart(document.getElementById('hTemp').getContext('2d'), 'Nhiệt độ (°C)', 'rgba(255, 99, 132, 1)');
+      hTemp.data.labels = labels; hTemp.data.datasets[0].data = rows.map(r=>r.temperature); hTemp.update();
+
+      hHum = makeLineChart(document.getElementById('hHum').getContext('2d'), 'Độ ẩm (%)', 'rgba(54, 162, 235, 1)');
+      hHum.data.labels = labels; hHum.data.datasets[0].data = rows.map(r=>r.humidity); hHum.update();
+
+      hMq2 = makeLineChart(document.getElementById('hMq2').getContext('2d'), 'MQ2', 'rgba(75, 192, 192, 1)');
+      hMq2.data.labels = labels; hMq2.data.datasets[0].data = rows.map(r=>r.mq2); hMq2.update();
+
+      hMq5 = makeLineChart(document.getElementById('hMq5').getContext('2d'), 'MQ5', 'rgba(153, 102, 255, 1)');
+      hMq5.data.labels = labels; hMq5.data.datasets[0].data = rows.map(r=>r.mq5); hMq5.update();
+
+      hMq9 = makeLineChart(document.getElementById('hMq9').getContext('2d'), 'MQ9', 'rgba(255, 159, 64, 1)');
+      hMq9.data.labels = labels; hMq9.data.datasets[0].data = rows.map(r=>r.mq9); hMq9.update();
+
+      hFlame = makeLineChart(document.getElementById('hFlame').getContext('2d'), 'Ngọn lửa (0/1)', 'rgba(201, 203, 207, 1)', { suggestedMin: -0.1, suggestedMax: 1.1 });
+      hFlame.data.labels = labels; hFlame.data.datasets[0].data = rows.map(r=>r.flame); hFlame.update();
+
+      hMgas = makeLineChart(document.getElementById('hMgas').getContext('2d'), 'M Gas', 'rgba(255, 206, 86, 1)');
+      hMgas.data.labels = labels; hMgas.data.datasets[0].data = rows.map(r=>r.M_gas); hMgas.update();
+
+      hMfire = makeLineChart(document.getElementById('hMfire').getContext('2d'), 'M Fire', 'rgba(255, 99, 71, 1)');
+      hMfire.data.labels = labels; hMfire.data.datasets[0].data = rows.map(r=>r.M_fire); hMfire.update();
+
+      // Gọi dashboard tóm tắt
+      renderHistoryDashboard(rows);
+    }
+
+    // =============== Download (open CSV) ===============
+    function initDownload() {
+      const dError = document.getElementById('dError');
+      document.getElementById('dBtn').addEventListener('click', () => {
+        const s = document.getElementById('dStart').value;
+        const e = document.getElementById('dEnd').value;
+        dError.classList.add('hidden');
+        if (!s || !e) { dError.textContent = "Vui lòng chọn cả ngày bắt đầu và kết thúc."; dError.classList.remove('hidden'); return; }
+        if (new Date(s) > new Date(e)) { dError.textContent = "Ngày bắt đầu không được lớn hơn ngày kết thúc."; dError.classList.remove('hidden'); return; }
+        window.open(`http://localhost:3000/api/download?startDate=${s}&endDate=${e}`, '_blank');
+      });
+    }
+
+    // =============== On load ===============
+    window.addEventListener('load', () => {
+      // Set default dates for history/download
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('hStart').value = today;
+      document.getElementById('hEnd').value = today;
+      document.getElementById('dStart').value = today;
+      document.getElementById('dEnd').value = today;
+
+      setupRealtimeCharts();
+      attachRealtimeListener();
+      initDownload();
+
+      // History search
+      const hBtn = document.getElementById('hBtn');
+      const hLoading = document.getElementById('hLoading');
+      const hError = document.getElementById('hError');
+      const hCharts = document.getElementById('hCharts');
+      const hNoData = document.getElementById('hNoData');
+
+      hBtn.addEventListener('click', async () => {
+        const s = document.getElementById('hStart').value;
+        const e = document.getElementById('hEnd').value;
+
+        hError.classList.add('hidden'); hNoData.classList.add('hidden');
+        hCharts.classList.add('hidden'); destroyHistoryCharts();
+        document.getElementById('hDashboard').classList.add('hidden'); destroyHistoryDashboard();
+
+        if (!s || !e) { hError.textContent = "Vui lòng chọn cả ngày bắt đầu và kết thúc."; hError.classList.remove('hidden'); return; }
+        if (new Date(s) > new Date(e)) { hError.textContent = "Ngày bắt đầu không được lớn hơn ngày kết thúc."; hError.classList.remove('hidden'); return; }
+
+        hLoading.classList.remove('hidden');
+        try {
+          const res = await fetch(`http://localhost:3000/api/history?startDate=${s}&endDate=${e}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const rows = await res.json();
+          hLoading.classList.add('hidden');
+          if (Array.isArray(rows) && rows.length) {
+            hCharts.classList.remove('hidden');
+            renderHistoryCharts(rows); // sẽ tự hiện dashboard
+          } else {
+            hNoData.classList.remove('hidden');
+            document.getElementById('hDashboard').classList.add('hidden');
+            destroyHistoryDashboard();
+          }
+        } catch (err) {
+          console.error('Lỗi tải lịch sử:', err);
+          hLoading.classList.add('hidden');
+          hError.textContent = `Không thể tải lịch sử dữ liệu. Kiểm tra API backend. (${err.message})`;
+          hError.classList.remove('hidden');
+          document.getElementById('hDashboard').classList.add('hidden');
+          destroyHistoryDashboard();
+        }
+      });
+
+      // Router start
+      if (!location.hash) location.hash = '#/realtime';
+      router();
+    });
+  </script>
+</body>
+</html>

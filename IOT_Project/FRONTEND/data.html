@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bảng điều khiển Realtime</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    .chart-container { width: 100%; height: 320px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Nav đồng nhất -->
+  <nav class="bg-gray-800 text-white p-4 w-full">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="text-xl font-bold">Menu</div>
+      <div>
+        <a href="history.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Xem Lịch Sử</a>
+        <a href="download.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Tải Lịch Sử</a>
+        <a href="data.html" class="px-4 py-2 bg-gray-700 rounded-md transition duration-300">Realtime</a>
+        <a href="machine-learning.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Machine Learning</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 container mx-auto p-4 md:p-8">
+    <div class="bg-white rounded-xl shadow-xl p-6 md:p-8">
+      <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Hệ thống giám sát cảnh báo cháy & rò rỉ khí gas</h1>
+      <p class="text-gray-600 mb-6">Dữ liệu thời gian thực từ Firebase.</p>
+
+      <!-- Khu vực dữ liệu tức thời -->
+      <div class="p-4 bg-gray-50 rounded-lg border mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-3">Dữ liệu theo thời gian</h2>
+        <div id="loading" class="text-sm inline-flex items-center gap-2 text-gray-700">
+          <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Đang tải dữ liệu thời gian thực...
+        </div>
+
+        <div id="sensor-data" class="hidden mt-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-left">
+            <p class="text-gray-700"><strong>Loại nguy hiểm:</strong> <span id="dangerType" class="font-semibold text-red-600">N/A</span></p>
+            <p class="text-gray-700"><strong>Cảnh báo:</strong> <span id="warning" class="font-semibold text-orange-500">N/A</span></p>
+            <p class="text-gray-700"><strong>Ngày:</strong> <span id="date" class="font-semibold text-blue-600">N/A</span></p>
+            <p class="text-gray-700"><strong>Giờ:</strong> <span id="time" class="font-semibold text-blue-600">N/A</span></p>
+            <p class="text-gray-700"><strong>Nhiệt độ:</strong> <span id="temperature" class="font-semibold text-purple-600">N/A</span> °C</p>
+            <p class="text-gray-700"><strong>Độ ẩm:</strong> <span id="humidity" class="font-semibold text-green-600">N/A</span> %</p>
+            <p class="text-gray-700"><strong>MQ2 (Khí dễ cháy):</strong> <span id="mq2" class="font-semibold text-gray-800">N/A</span></p>
+            <p class="text-gray-700"><strong>MQ5 (LPG/Ga tự nhiên):</strong> <span id="mq5" class="font-semibold text-gray-800">N/A</span></p>
+            <p class="text-gray-700"><strong>MQ9 (CO/Khí dễ cháy):</strong> <span id="mq9" class="font-semibold text-gray-800">N/A</span></p>
+            <p class="text-gray-700"><strong>Ngọn lửa:</strong> <span id="flame" class="font-semibold text-red-600">N/A</span></p>
+            <p class="text-gray-700"><strong>M Gas:</strong> <span id="M_gas" class="font-semibold text-gray-800">N/A</span></p>
+            <p class="text-gray-700"><strong>M Fire:</strong> <span id="M_fire" class="font-semibold text-gray-800">N/A</span></p>
+          </div>
+          <p class="text-xs text-gray-500 mt-4">Dữ liệu được cập nhật theo thời gian thực từ Firebase.</p>
+        </div>
+      </div>
+
+      <!-- Biểu đồ realtime -->
+      <h2 class="text-2xl font-semibold text-gray-800 mb-4">Biểu đồ thời gian thực</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Nhiệt độ (°C)</h3>
+          <div class="chart-container"><canvas id="temperatureChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Độ ẩm (%)</h3>
+          <div class="chart-container"><canvas id="humidityChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ2 (Khí dễ cháy)</h3>
+          <div class="chart-container"><canvas id="mq2Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ5 (LPG/Ga tự nhiên)</h3>
+          <div class="chart-container"><canvas id="mq5Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ9 (CO/Khí dễ cháy)</h3>
+          <div class="chart-container"><canvas id="mq9Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Ngọn lửa (0/1)</h3>
+          <div class="chart-container"><canvas id="flameChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">M Gas</h3>
+          <div class="chart-container"><canvas id="M_gasChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">M Fire</h3>
+          <div class="chart-container"><canvas id="M_fireChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+  <script>
+    Chart.register(ChartZoom);
+
+    // Cấu hình Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBy3RCaV1JbSGzOzFqpHuU6r_Z8Uj1QH0E",
+      authDomain: "thiet-bi-canh-bao-chay-khi-gas.firebaseapp.com",
+      databaseURL: "https://thiet-bi-canh-bao-chay-khi-gas-default-rtdb.firebaseio.com",
+      projectId: "thiet-bi-canh-bao-chay-khi-gas",
+      storageBucket: "thiet-bi-canh-bao-chay-khi-gas.firebasestorage.app",
+      messagingSenderId: "532758103182",
+      appId: "1:532758103182:web:e67d5d0e195a27e4caf5df"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const sensorRef = database.ref("users/0776707441/123456/ESP32");
+
+    const MAX_POINTS = 50;
+
+    // Hàm tạo chart đồng nhất với các trang khác
+    function makeLineChart(ctx, label, color, yOptions = {}) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{
+          label,
+          data: [],
+          borderColor: color,
+          backgroundColor: color.replace('1)', '0.15)'),
+          borderWidth: 2,
+          fill: true,
+          tension: 0.2
+        }]},
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { type: 'category', title: { display: true, text: 'Thời gian' } },
+            y: { beginAtZero: false, title: { display: true, text: 'Giá trị' }, ...yOptions }
+          },
+          plugins: {
+            legend: { display: true, position: 'top' },
+            tooltip: { mode: 'index', intersect: false },
+            zoom: {
+              pan: { enabled: true, mode: 'x' },
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+            }
+          }
+        }
+      });
+    }
+
+    let temperatureChart, humidityChart, mq2Chart, mq5Chart, mq9Chart, flameChart, M_gasChart, M_fireChart;
+
+    window.addEventListener('load', () => {
+      temperatureChart = makeLineChart(document.getElementById('temperatureChart').getContext('2d'), 'Nhiệt độ (°C)', 'rgba(255, 99, 132, 1)');
+      humidityChart    = makeLineChart(document.getElementById('humidityChart').getContext('2d'),   'Độ ẩm (%)',     'rgba(54, 162, 235, 1)');
+      mq2Chart         = makeLineChart(document.getElementById('mq2Chart').getContext('2d'),        'MQ2',            'rgba(75, 192, 192, 1)');
+      mq5Chart         = makeLineChart(document.getElementById('mq5Chart').getContext('2d'),        'MQ5',            'rgba(153, 102, 255, 1)');
+      mq9Chart         = makeLineChart(document.getElementById('mq9Chart').getContext('2d'),        'MQ9',            'rgba(255, 159, 64, 1)');
+      flameChart       = makeLineChart(document.getElementById('flameChart').getContext('2d'),      'Ngọn lửa (0/1)', 'rgba(201, 203, 207, 1)', { suggestedMin: -0.1, suggestedMax: 1.1 });
+      M_gasChart       = makeLineChart(document.getElementById('M_gasChart').getContext('2d'),      'M Gas',          'rgba(255, 206, 86, 1)');
+      M_fireChart      = makeLineChart(document.getElementById('M_fireChart').getContext('2d'),     'M Fire',         'rgba(255, 99, 71, 1)');
+    });
+
+    function pushRealtimePoint(chart, value) {
+      const t = new Date().toLocaleTimeString('vi-VN');
+      chart.data.labels.push(t);
+      chart.data.datasets[0].data.push(value);
+      if (chart.data.labels.length > MAX_POINTS) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+      }
+      chart.update();
+    }
+
+    function updateRealtimeCharts(d) {
+      const n = (v) => (typeof v !== 'undefined' && !Number.isNaN(Number(v))) ? Number(v) : null;
+
+      const t  = n(d.temperature); if (t  !== null) pushRealtimePoint(temperatureChart, t);
+      const h  = n(d.humidity);    if (h  !== null) pushRealtimePoint(humidityChart,    h);
+      const q2 = n(d.mq2);         if (q2 !== null) pushRealtimePoint(mq2Chart,         q2);
+      const q5 = n(d.mq5);         if (q5 !== null) pushRealtimePoint(mq5Chart,         q5);
+      const q9 = n(d.mq9);         if (q9 !== null) pushRealtimePoint(mq9Chart,         q9);
+      const fl = n(d.flame);       if (fl !== null) pushRealtimePoint(flameChart,       fl);
+      const mg = n(d.M_gas);       if (mg !== null) pushRealtimePoint(M_gasChart,       mg);
+      const mf = n(d.M_fire);      if (mf !== null) pushRealtimePoint(M_fireChart,      mf);
+    }
+
+    // Lắng nghe realtime
+    sensorRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      const loadingEl = document.getElementById('loading');
+      const sensorEl  = document.getElementById('sensor-data');
+
+      if (data) {
+        loadingEl.classList.add('hidden');
+        sensorEl.classList.remove('hidden');
+
+        document.getElementById('dangerType').textContent = data.dangerType ?? 'N/A';
+        document.getElementById('warning').textContent    = data.warning ?? 'N/A';
+        document.getElementById('date').textContent       = data.date ?? 'N/A';
+        document.getElementById('time').textContent       = data.time ?? 'N/A';
+        document.getElementById('temperature').textContent= data.temperature ?? 'N/A';
+        document.getElementById('humidity').textContent   = data.humidity ?? 'N/A';
+        document.getElementById('mq2').textContent        = data.mq2 ?? 'N/A';
+        document.getElementById('mq5').textContent        = data.mq5 ?? 'N/A';
+        document.getElementById('mq9').textContent        = data.mq9 ?? 'N/A';
+        document.getElementById('flame').textContent      = (typeof data.flame !== 'undefined') ? data.flame : 'N/A';
+        document.getElementById('M_gas').textContent      = data.M_gas ?? 'N/A';
+        document.getElementById('M_fire').textContent     = data.M_fire ?? 'N/A';
+
+        updateRealtimeCharts(data);
+      } else {
+        loadingEl.textContent = "Không có dữ liệu cảm biến thời gian thực.";
+        loadingEl.classList.remove('hidden');
+        sensorEl.classList.add('hidden');
+      }
+    }, (errorObject) => {
+      console.error("Lỗi đọc dữ liệu từ Firebase:", errorObject.code, errorObject.message);
+      const loadingEl = document.getElementById('loading');
+      loadingEl.textContent = "Lỗi khi tải dữ liệu thời gian thực.";
+      loadingEl.classList.remove('hidden');
+      document.getElementById('sensor-data').classList.add('hidden');
+    });
+  </script>
+</body>
+</html>

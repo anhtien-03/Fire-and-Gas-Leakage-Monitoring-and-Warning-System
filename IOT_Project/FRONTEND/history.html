@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lịch sử cảm biến</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    .chart-container { width: 100%; height: 320px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Nav (đồng nhất) -->
+  <nav class="bg-gray-800 text-white p-4 w-full">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="text-xl font-bold">Menu</div>
+      <div>
+        <a href="history.html" class="px-4 py-2 bg-gray-700 rounded-md transition duration-300">Xem Lịch Sử</a>
+        <a href="download.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Tải Lịch Sử</a>
+        <a href="data.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Realtime</a>
+        <a href="machine-learning.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Machine Learning</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 container mx-auto p-4 md:p-8">
+    <div class="bg-white rounded-xl shadow-xl p-6 md:p-8">
+      <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Xem lịch sử cảm biến</h1>
+      <p class="text-gray-600 mb-6">Chọn khoảng ngày để tải và hiển thị dữ liệu lịch sử từ API backend (MySQL).</p>
+
+      <!-- Bộ lọc ngày -->
+      <div class="p-4 bg-gray-50 rounded-lg border mb-4">
+        <div class="flex flex-col sm:flex-row items-center gap-4">
+          <div class="flex items-center gap-2">
+            <label for="historyStartDate" class="font-semibold text-gray-700">Ngày bắt đầu</label>
+            <input type="date" id="historyStartDate" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="historyEndDate" class="font-semibold text-gray-700">Ngày kết thúc</label>
+            <input type="date" id="historyEndDate" class="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+          </div>
+          <button id="searchHistoryBtn"
+                  class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow transition duration-200">
+            Tìm kiếm
+          </button>
+        </div>
+        <div id="historyLoading" class="mt-3 hidden text-sm inline-flex items-center gap-2 text-gray-700">
+          <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Đang tải lịch sử...
+        </div>
+        <div id="historyError" class="mt-3 hidden text-sm text-red-600"></div>
+      </div>
+
+      <!-- Vùng biểu đồ -->
+      <div id="historyChartsContainer" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Nhiệt độ (°C)</h3>
+          <div class="chart-container"><canvas id="historyTemperatureChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Độ ẩm (%)</h3>
+          <div class="chart-container"><canvas id="historyHumidityChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ2 (Khí dễ cháy)</h3>
+          <div class="chart-container"><canvas id="historyMq2Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ5 (LPG/Ga tự nhiên)</h3>
+          <div class="chart-container"><canvas id="historyMq5Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ9 (CO/Khí dễ cháy)</h3>
+          <div class="chart-container"><canvas id="historyMq9Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Ngọn lửa (0/1)</h3>
+          <div class="chart-container"><canvas id="historyFlameChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">M Gas</h3>
+          <div class="chart-container"><canvas id="historyM_gasChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">M Fire</h3>
+          <div class="chart-container"><canvas id="historyM_fireChart"></canvas></div>
+        </div>
+      </div>
+
+      <p id="noHistoryData" class="text-gray-500 p-4 hidden">Không có dữ liệu lịch sử cho khoảng ngày đã chọn.</p>
+    </div>
+  </main>
+
+  <script>
+    Chart.register(ChartZoom);
+
+    let historyTemperatureChart, historyHumidityChart, historyMq2Chart, historyMq5Chart, historyMq9Chart, historyFlameChart, historyM_gasChart, historyM_fireChart;
+
+    // Hàm tạo chart đồng nhất với machine-learning.html
+    function makeLineChart(ctx, label, color, yOptions = {}) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{
+          label,
+          data: [],
+          borderColor: color,
+          backgroundColor: color.replace('1)', '0.15)'),
+          borderWidth: 2,
+          fill: true,
+          tension: 0.2
+        }]},
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { type: 'category', title: { display: true, text: 'Thời gian' } },
+            y: { beginAtZero: false, title: { display: true, text: 'Giá trị' }, ...yOptions }
+          },
+          plugins: {
+            legend: { display: true, position: 'top' },
+            tooltip: { mode: 'index', intersect: false },
+            zoom: {
+              pan: { enabled: true, mode: 'x' },
+              zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+            }
+          }
+        }
+      });
+    }
+
+    function destroyHistoryCharts() {
+      [historyTemperatureChart, historyHumidityChart, historyMq2Chart, historyMq5Chart,
+       historyMq9Chart, historyFlameChart, historyM_gasChart, historyM_fireChart]
+       .forEach(ch => { if (ch) ch.destroy(); });
+    }
+
+    function renderHistoryCharts(rows) {
+      // labels theo "YYYY-MM-DD HH:mm:ss"
+      const labels = rows.map(r => {
+        const d = (r.date || '').split('T')[0] || r.date || '';
+        const t = r.time || '';
+        return `${d} ${t}`.trim();
+      });
+
+      historyTemperatureChart = makeLineChart(document.getElementById('historyTemperatureChart').getContext('2d'), 'Nhiệt độ (°C)', 'rgba(255, 99, 132, 1)');
+      historyTemperatureChart.data.labels = labels;
+      historyTemperatureChart.data.datasets[0].data = rows.map(r => r.temperature);
+      historyTemperatureChart.update();
+
+      historyHumidityChart = makeLineChart(document.getElementById('historyHumidityChart').getContext('2d'), 'Độ ẩm (%)', 'rgba(54, 162, 235, 1)');
+      historyHumidityChart.data.labels = labels;
+      historyHumidityChart.data.datasets[0].data = rows.map(r => r.humidity);
+      historyHumidityChart.update();
+
+      historyMq2Chart = makeLineChart(document.getElementById('historyMq2Chart').getContext('2d'), 'MQ2 (Khí dễ cháy)', 'rgba(75, 192, 192, 1)');
+      historyMq2Chart.data.labels = labels;
+      historyMq2Chart.data.datasets[0].data = rows.map(r => r.mq2);
+      historyMq2Chart.update();
+
+      historyMq5Chart = makeLineChart(document.getElementById('historyMq5Chart').getContext('2d'), 'MQ5 (LPG/Ga tự nhiên)', 'rgba(153, 102, 255, 1)');
+      historyMq5Chart.data.labels = labels;
+      historyMq5Chart.data.datasets[0].data = rows.map(r => r.mq5);
+      historyMq5Chart.update();
+
+      historyMq9Chart = makeLineChart(document.getElementById('historyMq9Chart').getContext('2d'), 'MQ9 (CO/Khí dễ cháy)', 'rgba(255, 159, 64, 1)');
+      historyMq9Chart.data.labels = labels;
+      historyMq9Chart.data.datasets[0].data = rows.map(r => r.mq9);
+      historyMq9Chart.update();
+
+      historyFlameChart = makeLineChart(document.getElementById('historyFlameChart').getContext('2d'), 'Ngọn lửa (0/1)', 'rgba(201, 203, 207, 1)', { suggestedMin: -0.1, suggestedMax: 1.1 });
+      historyFlameChart.data.labels = labels;
+      historyFlameChart.data.datasets[0].data = rows.map(r => r.flame);
+      historyFlameChart.update();
+
+      historyM_gasChart = makeLineChart(document.getElementById('historyM_gasChart').getContext('2d'), 'M Gas', 'rgba(255, 206, 86, 1)');
+      historyM_gasChart.data.labels = labels;
+      historyM_gasChart.data.datasets[0].data = rows.map(r => r.M_gas);
+      historyM_gasChart.update();
+
+      historyM_fireChart = makeLineChart(document.getElementById('historyM_fireChart').getContext('2d'), 'M Fire', 'rgba(255, 99, 71, 1)');
+      historyM_fireChart.data.labels = labels;
+      historyM_fireChart.data.datasets[0].data = rows.map(r => r.M_fire);
+      historyM_fireChart.update();
+    }
+
+    const searchHistoryBtn = document.getElementById('searchHistoryBtn');
+    const historyStartDateInput = document.getElementById('historyStartDate');
+    const historyEndDateInput = document.getElementById('historyEndDate');
+    const historyLoading = document.getElementById('historyLoading');
+    const historyError = document.getElementById('historyError');
+    const historyChartsContainer = document.getElementById('historyChartsContainer');
+    const noHistoryData = document.getElementById('noHistoryData');
+
+    window.addEventListener('load', () => {
+      const today = new Date().toISOString().split('T')[0];
+      historyStartDateInput.value = today;
+      historyEndDateInput.value = today;
+    });
+
+    searchHistoryBtn.addEventListener('click', async () => {
+      const startDate = historyStartDateInput.value;
+      const endDate = historyEndDateInput.value;
+
+      // reset UI
+      historyError.classList.add('hidden');
+      noHistoryData.classList.add('hidden');
+      historyChartsContainer.classList.add('hidden');
+      destroyHistoryCharts();
+
+      // validate
+      if (!startDate || !endDate) {
+        historyError.textContent = "Vui lòng chọn cả ngày bắt đầu và ngày kết thúc.";
+        historyError.classList.remove('hidden');
+        return;
+      }
+      if (new Date(startDate) > new Date(endDate)) {
+        historyError.textContent = "Ngày bắt đầu không được lớn hơn ngày kết thúc.";
+        historyError.classList.remove('hidden');
+        return;
+      }
+
+      // fetch
+      historyLoading.classList.remove('hidden');
+      try {
+        const res = await fetch(`http://localhost:3000/api/history?startDate=${startDate}&endDate=${endDate}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const history = await res.json();
+
+        historyLoading.classList.add('hidden');
+
+        if (Array.isArray(history) && history.length > 0) {
+          historyChartsContainer.classList.remove('hidden');
+          renderHistoryCharts(history);
+        } else {
+          noHistoryData.classList.remove('hidden');
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải lịch sử:', err);
+        historyLoading.classList.add('hidden');
+        historyError.textContent = `Không thể tải lịch sử dữ liệu. Vui lòng kiểm tra API backend. (${err.message})`;
+        historyError.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

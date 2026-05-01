@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Machine Learning – Giám sát cháy/gas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    .chart-container { width: 100%; height: 320px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Nav -->
+  <nav class="bg-gray-800 text-white p-4 w-full">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="text-xl font-bold">Menu</div>
+      <div>
+        <a href="index.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Bảng Điều Khiển</a>
+        <a href="history.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Xem Lịch Sử</a>
+        <a href="download.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Tải Lịch Sử</a>
+        <a href="data.html" class="px-4 py-2 hover:bg-gray-700 rounded-md transition duration-300">Realtime</a>
+        <a href="machine-learning.html" class="px-4 py-2 bg-gray-700 rounded-md transition duration-300">Machine Learning</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 container mx-auto p-4 md:p-8">
+    <div class="bg-white rounded-xl shadow-xl p-6 md:p-8">
+      <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Machine Learning</h1>
+      <p class="text-gray-600 mb-6">Trang này lấy dữ liệu thời gian thực từ Firebase và hiển thị trạng thái ML.</p>
+
+      <!-- Trạng thái tải -->
+      <div id="loading" class="text-gray-700">Đang tải dữ liệu từ Firebase...</div>
+
+      <!-- Tổng quan -->
+      <div id="overview" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <div class="text-sm text-gray-500">Nguy hiểm</div>
+          <div id="dangerType" class="text-xl font-semibold text-red-600">N/A</div>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <div class="text-sm text-gray-500">Cảnh báo</div>
+          <div id="warning" class="text-xl font-semibold text-orange-500">N/A</div>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <div class="text-sm text-gray-500">Nhiệt độ (°C)</div>
+          <div id="temperature" class="text-2xl font-semibold text-purple-600">N/A</div>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-lg border">
+          <div class="text-sm text-gray-500">Độ ẩm (%)</div>
+          <div id="humidity" class="text-2xl font-semibold text-blue-600">N/A</div>
+        </div>
+      </div>
+
+      <!-- Bảng dữ liệu hiện tại -->
+      <div id="currentData" class="hidden overflow-x-auto mb-8">
+        <table class="min-w-full border border-gray-200 rounded-lg overflow-hidden">
+          <thead class="bg-gray-100">
+            <tr class="text-left">
+              <th class="px-4 py-2">Ngày</th>
+              <th class="px-4 py-2">Giờ</th>
+              <th class="px-4 py-2">MQ2</th>
+              <th class="px-4 py-2">MQ5</th>
+              <th class="px-4 py-2">MQ9</th>
+              <th class="px-4 py-2">Flame</th>
+              <th class="px-4 py-2">M Gas</th>
+              <th class="px-4 py-2">M Fire</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y"></tbody>
+        </table>
+      </div>
+
+      <!-- Biểu đồ realtime -->
+      <h2 class="text-2xl font-semibold text-gray-800 mb-4">Biểu đồ thời gian thực</h2>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Nhiệt độ (Realtime)</h3>
+          <div class="chart-container"><canvas id="tempChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Độ ẩm (Realtime)</h3>
+          <div class="chart-container"><canvas id="humChart"></canvas></div>
+        </div>
+
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ2 (Khí dễ cháy)</h3>
+          <div class="chart-container"><canvas id="mq2Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ5 (LPG/Ga tự nhiên)</h3>
+          <div class="chart-container"><canvas id="mq5Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">MQ9 (CO/Khí dễ cháy)</h3>
+          <div class="chart-container"><canvas id="mq9Chart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">Flame (0/1)</h3>
+          <div class="chart-container"><canvas id="flameChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">M Gas</h3>
+          <div class="chart-container"><canvas id="mgasChart"></canvas></div>
+        </div>
+        <div class="bg-gray-50 p-4 rounded-lg border">
+          <h3 class="font-semibold mb-2">M Fire</h3>
+          <div class="chart-container"><canvas id="mfireChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Khu vực ML (mô tả) -->
+      <div class="mt-8 p-4 rounded-lg border">
+        <h3 class="text-xl font-semibold mb-2">Khu vực mô hình (chuẩn bị)</h3>
+        <p class="text-gray-600">
+          Có thể mở rộng để nạp dữ liệu lịch sử, huấn luyện/đánh giá mô hình (TF.js) hoặc gọi inference từ server.
+        </p>
+      </div>
+
+      <!-- Khu vực trạng thái ML -->
+      <div class="mt-6 p-4 rounded-lg border bg-gray-50">
+        <h3 class="text-xl font-semibold mb-4">Trạng thái Machine Learning</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div class="p-4 bg-white rounded-lg border">
+            <div class="text-sm text-gray-500">Lần kiểm tra gần nhất</div>
+            <div id="ml_last_check" class="text-lg font-semibold text-gray-800">N/A</div>
+          </div>
+          <div class="p-4 bg-white rounded-lg border">
+            <div class="text-sm text-gray-500">Khung giờ chạy (ml_hour)</div>
+            <div id="ml_hour" class="text-lg font-semibold text-gray-800">N/A</div>
+          </div>
+          <div class="p-4 bg-white rounded-lg border">
+            <div class="text-sm text-gray-500">Tình trạng</div>
+            <div id="ml_status_badge" class="inline-block px-2 py-1 rounded text-sm font-semibold">N/A</div>
+          </div>
+        </div>
+
+        <div class="p-4 bg-white rounded-lg border mb-4">
+          <div class="text-sm text-gray-500 mb-1">Ghi chú (ml_notes)</div>
+          <div id="ml_notes" class="whitespace-pre-wrap text-gray-800">N/A</div>
+        </div>
+
+        <!-- Bản tóm tắt anomalies -->
+        <div class="p-4 bg-white rounded-lg border">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm text-gray-500">Bất thường hiện tại</div>
+            <div class="text-sm">Số mục bất thường: <span id="ml_anomalies_count" class="font-semibold text-red-600">0</span></div>
+          </div>
+
+          <!-- Bảng chi tiết anomalies theo từng sensor -->
+          <div class="overflow-x-auto">
+            <table class="min-w-full border border-gray-200 rounded-lg overflow-hidden">
+              <thead class="bg-gray-100">
+                <tr class="text-left">
+                  <th class="px-3 py-2">Sensor</th>
+                  <th class="px-3 py-2">Status</th>
+                  <th class="px-3 py-2">Value</th>
+                  <th class="px-3 py-2">q10</th>
+                  <th class="px-3 py-2">q90</th>
+                  <th class="px-3 py-2">Median</th>
+                  <th class="px-3 py-2">Percentile Normal</th>
+                  <th class="px-3 py-2">Severity</th>
+                  <th class="px-3 py-2">z_mad</th>
+                </tr>
+              </thead>
+              <tbody id="ml_anomalies_table" class="divide-y"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- /Khu vực trạng thái ML -->
+    </div>
+  </main>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+  <script>
+    Chart.register(ChartZoom);
+
+    // Cấu hình Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyBy3RCaV1JbSGzOzFqpHuU6r_Z8Uj1QH0E",
+      authDomain: "thiet-bi-canh-bao-chay-khi-gas.firebaseapp.com",
+      databaseURL: "https://thiet-bi-canh-bao-chay-khi-gas-default-rtdb.firebaseio.com",
+      projectId: "thiet-bi-canh-bao-chay-khi-gas",
+      storageBucket: "thiet-bi-canh-bao-chay-khi-gas.firebasestorage.app",
+      messagingSenderId: "532758103182",
+      appId: "1:532758103182:web:e67d5d0e195a27e4caf5df"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const sensorRef = db.ref("users/0776707441/123456/ESP32");
+
+    const MAX_POINTS = 50;
+
+    function makeLineChart(ctx, label, color, yOptions = {}) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: [{
+          label,
+          data: [],
+          borderColor: color,
+          backgroundColor: color.replace('1)', '0.15)'),
+          borderWidth: 2,
+          fill: true,
+          tension: 0.2
+        }]},
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { type: 'category', title: { display: true, text: 'Thời gian' } },
+            y: { beginAtZero: false, title: { display: true, text: 'Giá trị' }, ...yOptions }
+          },
+          plugins: {
+            legend: { display: true, position: 'top' },
+            tooltip: { mode: 'index', intersect: false },
+            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+          }
+        }
+      });
+    }
+
+    let tempChart, humChart, mq2Chart, mq5Chart, mq9Chart, flameChart, mgasChart, mfireChart;
+
+    window.addEventListener('load', () => {
+      tempChart  = makeLineChart(document.getElementById('tempChart').getContext('2d'),  'Nhiệt độ (°C)', 'rgba(255, 99, 132, 1)');
+      humChart   = makeLineChart(document.getElementById('humChart').getContext('2d'),   'Độ ẩm (%)',     'rgba(54, 162, 235, 1)');
+      mq2Chart   = makeLineChart(document.getElementById('mq2Chart').getContext('2d'),   'MQ2',            'rgba(75, 192, 192, 1)');
+      mq5Chart   = makeLineChart(document.getElementById('mq5Chart').getContext('2d'),   'MQ5',            'rgba(153, 102, 255, 1)');
+      mq9Chart   = makeLineChart(document.getElementById('mq9Chart').getContext('2d'),   'MQ9',            'rgba(255, 159, 64, 1)');
+      flameChart = makeLineChart(document.getElementById('flameChart').getContext('2d'), 'Flame (0/1)',    'rgba(201, 203, 207, 1)', { suggestedMin: -0.1, suggestedMax: 1.1 });
+      mgasChart  = makeLineChart(document.getElementById('mgasChart').getContext('2d'),  'M Gas',          'rgba(255, 206, 86, 1)');
+      mfireChart = makeLineChart(document.getElementById('mfireChart').getContext('2d'), 'M Fire',         'rgba(255, 99, 71, 1)');
+    });
+
+    function pushRealtimePoint(chart, value) {
+      const t = new Date().toLocaleTimeString('vi-VN');
+      chart.data.labels.push(t);
+      chart.data.datasets[0].data.push(value);
+      if (chart.data.labels.length > MAX_POINTS) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+      }
+      chart.update();
+    }
+
+    function fillTableRow(data) {
+      const tr = document.createElement('tr');
+      tr.className = "bg-white hover:bg-gray-50";
+      const cells = [
+        data.date ?? 'N/A',
+        data.time ?? 'N/A',
+        data.mq2  ?? 'N/A',
+        data.mq5  ?? 'N/A',
+        data.mq9  ?? 'N/A',
+        data.flame ?? 'N/A',
+        data.M_gas ?? 'N/A',
+        data.M_fire ?? 'N/A'
+      ];
+      cells.forEach(text => {
+        const td = document.createElement('td');
+        td.className = "px-4 py-2";
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = ""; // chỉ hiển thị giá trị hiện tại
+      tbody.appendChild(tr);
+    }
+
+    // Badge màu (hỗ trợ VN/EN)
+    function setMlStatusBadge(text) {
+      const el = document.getElementById('ml_status_badge');
+      el.textContent = text ?? 'N/A';
+      el.className = 'inline-block px-2 py-1 rounded text-sm font-semibold';
+      const v = (text || '').toString().trim().toLowerCase();
+      const okSet       = ['ok','normal','ready','active','running','bình thường','binh thuong'];
+      const warnSet     = ['warning','caution','degraded','cảnh báo','canh bao'];
+      const criticalSet = ['alert','error','anomaly','critical','failed','khẩn cấp','khan cap','khẩn cấp!'];
+
+      if (okSet.includes(v)) {
+        el.classList.add('bg-green-100','text-green-700','border','border-green-200');
+      } else if (warnSet.includes(v)) {
+        el.classList.add('bg-yellow-100','text-yellow-700','border','border-yellow-200');
+      } else if (criticalSet.includes(v)) {
+        el.classList.add('bg-red-100','text-red-700','border','border-red-200');
+      } else {
+        el.classList.add('bg-gray-100','text-gray-700','border','border-gray-200');
+      }
+    }
+
+    // Cấu hình hiển thị anomalies
+    const SENSOR_ORDER  = ["Temp","Humidity","Mq2","Mq5","Mq9","M_gas","M_fire"];
+    const SENSOR_LABELS = {
+      Temp: "Nhiệt độ",
+      Humidity: "Độ ẩm",
+      Mq2: "MQ2",
+      Mq5: "MQ5",
+      Mq9: "MQ9",
+      M_gas: "M Gas",
+      M_fire: "M Fire"
+    };
+    const fmt = (x) => (typeof x === 'number' ? x.toFixed(3) : (x ?? 'N/A'));
+
+    function renderAnomaliesTable(anomsObj) {
+      const tbody = document.getElementById('ml_anomalies_table');
+      tbody.innerHTML = '';
+      if (!anomsObj || typeof anomsObj !== 'object') {
+        document.getElementById('ml_anomalies_count').textContent = '0';
+        return;
+      }
+
+      let rows = Object.entries(anomsObj);
+      // abnormal trước, sau đó theo thứ tự cố định
+      rows.sort((a, b) => {
+        const aAb = (a[1]?.status || '').toString().trim().toLowerCase() !== 'normal' ? 1 : 0;
+        const bAb = (b[1]?.status || '').toString().trim().toLowerCase() !== 'normal' ? 1 : 0;
+        if (aAb !== bAb) return bAb - aAb;
+        const ia = SENSOR_ORDER.indexOf(a[0]); 
+        const ib = SENSOR_ORDER.indexOf(b[0]);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return a[0].localeCompare(b[0]);
+      });
+
+      let abnormalCount = 0;
+
+      rows.forEach(([key, a]) => {
+        const status = (a?.status ?? 'N/A').toString();
+        const vStatus = status.toLowerCase().trim();
+        const isAbnormal = vStatus !== 'normal';
+        if (isAbnormal) abnormalCount++;
+
+        const tr = document.createElement('tr');
+        tr.className = 'bg-white hover:bg-gray-50';
+        if (isAbnormal) tr.classList.add('bg-red-50');
+
+        const mk = (text) => {
+          const td = document.createElement('td');
+          td.className = 'px-3 py-2';
+          td.textContent = text;
+          return td;
+        };
+
+        // badge status
+        const statusTd = document.createElement('td');
+        statusTd.className = 'px-3 py-2';
+        const badge = document.createElement('span');
+        badge.textContent = status || 'N/A';
+        badge.className = 'inline-block px-2 py-0.5 rounded text-xs font-semibold';
+
+        const okSet       = ['ok','normal','ready','active','running','bình thường','binh thuong'];
+        const warnSet     = ['warning','caution','degraded','cảnh báo','canh bao'];
+        const criticalSet = ['alert','error','anomaly','critical','failed','khẩn cấp','khan cap','khẩn cấp!'];
+
+        if (okSet.includes(vStatus)) {
+          badge.classList.add('bg-green-100','text-green-700','border','border-green-200');
+        } else if (warnSet.includes(vStatus)) {
+          badge.classList.add('bg-yellow-100','text-yellow-700','border','border-yellow-200');
+        } else if (criticalSet.includes(vStatus)) {
+          badge.classList.add('bg-red-100','text-red-700','border','border-red-200');
+        } else {
+          badge.classList.add('bg-gray-100','text-gray-700','border','border-gray-200');
+        }
+        statusTd.appendChild(badge);
+
+        const label = SENSOR_LABELS[key] ?? key;
+        tr.appendChild(mk(label));
+        tr.appendChild(statusTd);
+        tr.appendChild(mk(fmt(a?.value)));
+        tr.appendChild(mk(fmt(a?.q10)));
+        tr.appendChild(mk(fmt(a?.q90)));
+        tr.appendChild(mk(fmt(a?.median)));
+        tr.appendChild(mk(fmt(a?.percentile_normal)));
+        tr.appendChild(mk(fmt(a?.severity)));
+        tr.appendChild(mk(fmt(a?.z_mad)));
+
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('ml_anomalies_count').textContent = String(abnormalCount);
+    }
+
+    function renderMlNotes(notes) {
+      const host = document.getElementById('ml_notes');
+      host.innerHTML = '';
+      if (Array.isArray(notes) && notes.length) {
+        const ul = document.createElement('ul');
+        ul.className = 'list-disc pl-5 space-y-1';
+        notes.forEach(n => {
+          const li = document.createElement('li');
+          li.textContent = String(n);
+          ul.appendChild(li);
+        });
+        host.appendChild(ul);
+      } else if (typeof notes === 'string' && notes.trim()) {
+        host.textContent = notes;
+      } else {
+        host.textContent = 'N/A';
+      }
+    }
+
+    // Lắng nghe realtime
+    sensorRef.on('value', (snap) => {
+      const data = snap.val();
+      const loading = document.getElementById('loading');
+      const overview = document.getElementById('overview');
+      const currentData = document.getElementById('currentData');
+
+      if (!data) {
+        loading.textContent = "Không có dữ liệu từ Firebase.";
+        overview.classList.add('hidden');
+        currentData.classList.add('hidden');
+        return;
+      }
+
+      loading.classList.add('hidden');
+      overview.classList.remove('hidden');
+      currentData.classList.remove('hidden');
+
+      // Tổng quan
+      document.getElementById('dangerType').textContent = data.dangerType ?? 'N/A';
+      document.getElementById('warning').textContent    = data.warning ?? 'N/A';
+      document.getElementById('temperature').textContent= data.temperature ?? 'N/A';
+      document.getElementById('humidity').textContent   = data.humidity ?? 'N/A';
+
+      // Bảng realtime hiện tại
+      fillTableRow(data);
+
+      // Đẩy điểm biểu đồ
+      const n = (v) => (typeof v !== 'undefined' && !Number.isNaN(Number(v))) ? Number(v) : null;
+      const t  = n(data.temperature); if (t  !== null) pushRealtimePoint(tempChart,  t);
+      const h  = n(data.humidity);    if (h  !== null) pushRealtimePoint(humChart,   h);
+      const q2 = n(data.mq2);         if (q2 !== null) pushRealtimePoint(mq2Chart,   q2);
+      const q5 = n(data.mq5);         if (q5 !== null) pushRealtimePoint(mq5Chart,   q5);
+      const q9 = n(data.mq9);         if (q9 !== null) pushRealtimePoint(mq9Chart,   q9);
+      const fl = n(data.flame);       if (fl !== null) pushRealtimePoint(flameChart, fl);
+      const mg = n(data.M_gas);       if (mg !== null) pushRealtimePoint(mgasChart,  mg);
+      const mf = n(data.M_fire);      if (mf !== null) pushRealtimePoint(mfireChart, mf);
+
+      // --- Khu vực ML ---
+      document.getElementById('ml_last_check').textContent = data?.ml_last_check ?? 'N/A';
+      document.getElementById('ml_hour').textContent       = data?.ml_hour ?? 'N/A';
+      setMlStatusBadge(data?.ml_status);
+      renderMlNotes(data?.ml_notes);
+      renderAnomaliesTable(data?.ml_anomalies);
+    }, (err) => {
+      console.error("Lỗi đọc Firebase:", err?.code, err?.message);
+      const loading = document.getElementById('loading');
+      loading.textContent = "Lỗi khi tải dữ liệu từ Firebase.";
+      loading.classList.remove('hidden');
+      document.getElementById('overview').classList.add('hidden');
+      document.getElementById('currentData').classList.add('hidden');
+    });
+  </script>
+</body>
+</html>
