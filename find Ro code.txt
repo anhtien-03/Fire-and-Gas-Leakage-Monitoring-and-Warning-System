@@ -1,0 +1,84 @@
+#include <Arduino.h>
+
+// ============ PINS ============
+#define MQ2_PIN 6
+#define MQ5_PIN 5
+#define MQ9_PIN 4
+
+// ============ HARDWARE CONFIG ============
+#define RT_TOP      10000.0f   // (AO -> ADC) điện trở trên 10k
+#define RB_BOTTOM   20000.0f   // (ADC -> GND) điện trở dưới 20k
+const float AOUT_SCALE  = (RT_TOP + RB_BOTTOM) / RB_BOTTOM;  // = 1.5
+const float VCC_SENSOR  = 5.0f;   // MQ AOUT max 5V
+const float ADC_REF     = 3.3f;   // ESP32 ADC max 3.3V
+const float RL          = 9800.0f; // 9.8 kΩ
+
+// ============ CLEAN-AIR RATIOS ============
+#define MQ2_CLEAN_AIR_RATIO  9.8f
+#define MQ5_CLEAN_AIR_RATIO  6.5f
+#define MQ9_CLEAN_AIR_RATIO  9.6f
+
+// ============ HELPERS ============
+static inline float adcToVadc(int adc)        { return (adc / 4095.0f) * ADC_REF; }
+static inline float vadcToVsensor(float vAdc) { return vAdc * AOUT_SCALE; }
+static inline float calcRsFromVsensor(float vSen) {
+  if (vSen < 0.005f) vSen = 0.005f; 
+  return RL * (VCC_SENSOR / vSen - 1.0f);
+}
+
+int readADCStable(int pin) {
+  const int N = 16;
+  int s = 0;
+  for (int i = 0; i < N; i++) { s += analogRead(pin); delayMicroseconds(300); }
+  return s / N;
+}
+
+float calibrateRo(int pin, float cleanAirRatio, const char* name) {
+  const int SAMPLES = 60;  // 60 lần ~ 60 giây
+  float sumRs = 0.0f;
+
+  Serial.printf("\n--- HIỆU CHUẨN %s ---\n", name);
+
+  for (int i = 0; i < SAMPLES; i++) {
+    int   adc     = readADCStable(pin);
+    float vAdc    = adcToVadc(adc);
+    float vSensor = vadcToVsensor(vAdc);
+    float rs      = calcRsFromVsensor(vSensor);
+    float ro      = rs / cleanAirRatio;
+
+    sumRs += rs;
+
+    Serial.printf("[%02d] ADC=%4d | Vadc=%.3f V | Vsensor=%.3f V | Rs=%.2f kΩ | Ro=%.2f kΩ\n",
+                  i+1, adc, vAdc, vSensor, rs/1000.0f, ro/1000.0f);
+
+    delay(1000); 
+  }
+
+  float avgRs = sumRs / SAMPLES;
+  float Ro = avgRs / cleanAirRatio;
+  Serial.printf(">>> %s: Avg Rs=%.2f kΩ => Ro=%.2f kΩ\n", name, avgRs/1000.0f, Ro/1000.0f);
+  return Ro;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  analogReadResolution(12);
+  analogSetPinAttenuation(MQ2_PIN, ADC_11db);
+  analogSetPinAttenuation(MQ5_PIN, ADC_11db);
+  analogSetPinAttenuation(MQ9_PIN, ADC_11db);
+
+  Serial.println("Warm-up MQ sensors (60s)...");
+  delay(60000);
+
+  float Ro_MQ2 = calibrateRo(MQ2_PIN, MQ2_CLEAN_AIR_RATIO, "MQ2");
+  float Ro_MQ5 = calibrateRo(MQ5_PIN, MQ5_CLEAN_AIR_RATIO, "MQ5");
+  float Ro_MQ9 = calibrateRo(MQ9_PIN, MQ9_CLEAN_AIR_RATIO, "MQ9");
+
+  Serial.println("\n=== KẾT QUẢ CUỐI CÙNG ===");
+  Serial.printf("Ro_MQ2 = %.2f kΩ\n", Ro_MQ2/1000.0f);
+  Serial.printf("Ro_MQ5 = %.2f kΩ\n", Ro_MQ5/1000.0f);
+  Serial.printf("Ro_MQ9 = %.2f kΩ\n", Ro_MQ9/1000.0f);
+}
+
+void loop() {}
