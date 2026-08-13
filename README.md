@@ -8,19 +8,22 @@ The system uses an **ESP32**, MQ-series gas sensors, DHT22, Firebase, and a mobi
 
 The system consists of four main layers: Perception, Network, Processing, and Application.
 
-![System Architecture](images/system-architecture.png)
+<img width="1162" height="475" alt="image" src="https://github.com/user-attachments/assets/6968a798-c1a5-4ef9-9bda-89cfa4e21127" />
+
 
 ## Hardware Architecture
 
 The hardware includes sensors for gas, temperature, and humidity, an ESP32 as the main controller, and output devices for warning and control.
 
-![Hardware Architecture](images/hardware-architecture.png)
+<img width="1157" height="514" alt="image" src="https://github.com/user-attachments/assets/434d3a82-9e5c-4f85-9115-4b5a15b6aeeb" />
+
 
 ## Mobile Application
 
 The mobile application provides real-time monitoring, warning notifications, and remote interaction with the system.
 
-![Mobile Application](images/mobile-application.png)
+<img width="1597" height="642" alt="image" src="https://github.com/user-attachments/assets/6d82ec12-00be-45f0-beea-c561fe1cdf8b" />
+
 
 ## Machine Learning
 
