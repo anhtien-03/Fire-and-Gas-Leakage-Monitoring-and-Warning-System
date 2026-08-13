@@ -33,6 +33,10 @@ The Machine Learning module can:
 - Predict future sensor values
 - Identify unusual environmental changes
 - Support early warning
+<img width="986" height="543" alt="image" src="https://github.com/user-attachments/assets/f0adca0c-c1f9-4fca-8b7c-4771e65a0a95" />
+<img width="1047" height="601" alt="image" src="https://github.com/user-attachments/assets/554f5488-c5c2-4b7e-b721-ac6afc0fc2d2" />
+<img width="1025" height="590" alt="image" src="https://github.com/user-attachments/assets/1144dd96-91da-4095-851b-2b8655b7bdbf" />
+
 
 Prediction performance depends on the quality and amount of available training data.
 
