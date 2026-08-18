@@ -73,7 +73,3 @@ Prediction performance depends on the quality and amount of available training d
 ## Purpose
 
 This project explores the integration of **Machine Learning into an IoT safety monitoring system** to analyze environmental trends and support **early risk detection**.
-
-## Author
-
-**Sâu**
